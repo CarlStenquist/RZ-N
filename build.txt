@@ -1,10 +1,44 @@
+SHORT GUIDE ====================================
+Pull anytime to get the latest updates
+$ git clone -b rzn1-stable https://github.com/renesas-rz/rzn1_linux.git
+
+$ cd rzn1_linux/
+
+You should see the 'rzn1-stable' branch.
+$ git branch -a
+
+* rzn1-stable
+  remotes/origin/HEAD -> origin/master
+  remotes/origin/master
+  remotes/origin/rzn1-stable
+
+This branch includes the GOAL Core-to-Core (C2C) driver from port GmbH. OBSERVE: The C2C driver version must match the GOAL Cortex M3 code version
+=================================================
+
+
+DETAILED GUIDE =========================================
 $git init
-$git add --all
-$./build2.sh update k
-(Or run 
-$git clone -b rzn1-stable https://github.com/renesas-rz/rzn1_linux.git
-manually)
-$git add output/rzn1_linux/*
+$./build.sh update k
+    (Or run 
+    $git clone -b rzn1-stable https://github.com/renesas-rz/rzn1_linux.git
+    to get the latest updates, then build without the script.)
+$./build.sh kernel rzn1_defconfig
+$./build.sh kernel menuconfig
+
+$ git branch -a
+
+* rzn1-stable
+  remotes/origin/HEAD -> origin/master
+  remotes/origin/master
+  remotes/origin/rzn1-stable
+
+This branch includes the GOAL Core-to-Core (C2C) driver from port GmbH. OBSERVE: The C2C driver version must match the GOAL Cortex M3 code version
+Add any files you change, e.g.
+$git add ~/rzn1_linux-4.9_bsp2/output/buildroot-2017.02/configs/rzn1_defconfig
+$git add ~/rzn1_linux-4.9_bsp2/output/rzn1_linux/arch/arm/configs/rzn1_defconfig
+$git add ~/rzn1_linux-4.9_bsp2/patches-buildroot/buildroot-2017.02/rzn1_defconf
+$git commit
+
 $/linux-stable-rt$ git commit
 
 
