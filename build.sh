@@ -1,6 +1,15 @@
 #!/bin/bash
 #   http://sources.buildroot.net/
 
+# ==========================================================================
+#History
+# CS: Added repo https://github.com/renesas-rz/rzn1_linux.git to kernel sections build and update.
+# 
+# CS: Changed U-Boot build section to be acc. to 1.3.1 U-Boot manual. Need to merge this new section 
+# into Chris's more refined build right below it later, and perhaps add the spkg-utility converter.
+#
+# ==========================================================================
+
 # Function: usage
 function usage {
   echo -ne "\033[1;31m" # RED TEXT
@@ -59,7 +68,7 @@ function check_for_toolchain {
 }
 
 # Save current config settings to file
-function save_config {
+function save_confiRZ-N1D-System-Setup-Tutorial.pdfg {
   echo "BOARD=$BOARD" > output/config.txt
   echo "UBOOTCONFIG=$UBOOTCONFIG" >> output/config.txt
   echo "UBOOTBOARD=$UBOOTBOARD" >> output/config.txt
@@ -416,8 +425,50 @@ fi
 # build u-boot
 ###############################################################################
 if [ "$1" == "u-boot" ] || [ "$1" == "u" ] ; then
+  # ==========================================================================
+  banner_yellow Observe!
+  echo -e "This is for the 1.3.1 DVD and higher revisions and follows"
+  echo -e "RZN1-U-Boot-User-Manual.pdf chapters U-Boot Setup and Build."
+  echo -e "New u-boot branch is at https://github.com/renesas-rz/rzn1_u-boot.git"
+
   banner_yellow "Building u-boot"
 
+  cd $OUTDIR
+
+  git clone http://git.denx.de/u-boot.git
+  cd u-boot
+  
+  # Checkout a branch based on the 2017.01 version:
+  git checkout -b rzn1 v2017.01
+  
+  # Set the BSP version to according to the release, for example:
+  BSP_VERSION=v1.4.4
+  
+  # Fetch the RZ/N1 branch and merge it in:
+  git remote add renesas-rz https://github.com/renesas-rz/rzn1_u-boot.git
+  git fetch --tags renesas-rz
+  git merge rzn1-public-$BSP_VERSION
+
+  # Build.
+  # Setup configuration for Renesas RZ/N1D-DB Board
+  make rzn1d400-db_config
+  # Setup configuration for Renesas RZ/N1S-DB Board
+  #make rzn1s324-db_config
+  # Setup configuration for Renesas RZ/N1S IO-Link Board
+  #make rzn1s-io-link_config
+  # Setup configuration for Renesas RZ/N1L-DB Board
+  #make rzn1l-db_config
+  # Build U-Boot
+  make
+
+  echo -e "The Elf executable is stored as 'u-boot' but must be converted to a Renesas SPKG image before download via DFU."
+  echo -e "DONE BUILD U-BOOT.\n"
+  exit  
+
+  # ==========================================================================
+  # The rest of this u-boot section is the old method for 1.3 DVD and earlier. 
+  # Comment out above to use.
+  
   check_for_toolchain
 
   # The dtc program is inside the kernel source tree
@@ -880,10 +931,10 @@ if [ "$1" == "update" ] ; then
       git clone -b rzn1-stable https://github.com/renesas-rz/rzn1_linux.git
     else
       cd output/rzn1_linux
-      git stash
+      git stash                     # <== userâ€™s changes saved
       git checkout rzn1-stable
-      git pull
-      git stash pop
+      git pull                      # <== REA updates
+      git stash pop                 # <== userâ€™s changes reinserted
     fi
     exit
   fi
