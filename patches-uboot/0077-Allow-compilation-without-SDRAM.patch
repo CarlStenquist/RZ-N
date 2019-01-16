@@ -1,0 +1,116 @@
+From 57f74fc91346db4a154bedd5cc80d887f13e6fe4 Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Mon, 9 Jan 2017 13:39:10 +0000
+Subject: [PATCH] Allow compilation without SDRAM
+
+Tweaks to allow these files to compile without the SDRAM config.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ arch/arm/lib/bootm-fdt.c  | 2 ++
+ arch/arm/lib/bootm.c      | 4 ++++
+ arch/arm/lib/cache-cp15.c | 4 ++++
+ common/image.c            | 2 +-
+ 4 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/lib/bootm-fdt.c b/arch/arm/lib/bootm-fdt.c
+index e261d4f..515edf2 100644
+--- a/arch/arm/lib/bootm-fdt.c
++++ b/arch/arm/lib/bootm-fdt.c
+@@ -27,6 +27,7 @@ DECLARE_GLOBAL_DATA_PTR;
+ 
+ int arch_fixup_fdt(void *blob)
+ {
++#ifdef CONFIG_NR_DRAM_BANKS
+ 	bd_t *bd = gd->bd;
+ 	int bank, ret;
+ 	u64 start[CONFIG_NR_DRAM_BANKS];
+@@ -58,6 +59,7 @@ int arch_fixup_fdt(void *blob)
+ 	if (ret)
+ 		return ret;
+ #endif
++#endif
+ 
+ 	return 0;
+ }
+diff --git a/arch/arm/lib/bootm.c b/arch/arm/lib/bootm.c
+index dccf7ef..ab8fe8d 100644
+--- a/arch/arm/lib/bootm.c
++++ b/arch/arm/lib/bootm.c
+@@ -58,10 +58,12 @@ void arch_lmb_reserve(struct lmb *lmb)
+ 	sp = get_sp();
+ 	debug("## Current stack ends at 0x%08lx ", sp);
+ 
++#ifdef CONFIG_NR_DRAM_BANKS
+ 	/* adjust sp by 4K to be safe */
+ 	sp -= 4096;
+ 	lmb_reserve(lmb, sp,
+ 		    gd->bd->bi_dram[0].start + gd->bd->bi_dram[0].size - sp);
++#endif
+ }
+ 
+ __weak void board_quiesce_devices(void)
+@@ -110,6 +112,7 @@ static void setup_start_tag (bd_t *bd)
+ 
+ static void setup_memory_tags(bd_t *bd)
+ {
++#ifdef CONFIG_NR_DRAM_BANKS
+ 	int i;
+ 
+ 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+@@ -121,6 +124,7 @@ static void setup_memory_tags(bd_t *bd)
+ 
+ 		params = tag_next (params);
+ 	}
++#endif
+ }
+ 
+ static void setup_commandline_tag(bd_t *bd, char *commandline)
+diff --git a/arch/arm/lib/cache-cp15.c b/arch/arm/lib/cache-cp15.c
+index 3cd5350..5bcee38 100644
+--- a/arch/arm/lib/cache-cp15.c
++++ b/arch/arm/lib/cache-cp15.c
+@@ -94,6 +94,7 @@ void mmu_set_region_dcache_behaviour(phys_addr_t start, size_t size,
+ 	mmu_page_table_flush(startpt, stoppt);
+ }
+ 
++#ifdef CONFIG_NR_DRAM_BANKS
+ __weak void dram_bank_mmu_setup(int bank)
+ {
+ 	bd_t *bd = gd->bd;
+@@ -113,6 +114,7 @@ __weak void dram_bank_mmu_setup(int bank)
+ #endif
+ 	}
+ }
++#endif
+ 
+ __weak void post_mmu_setup(void)
+ {
+@@ -130,9 +132,11 @@ static inline void mmu_setup(void)
+ 		set_section_dcache(i, DCACHE_OFF);
+ 
+ 	post_mmu_setup();
++#ifdef CONFIG_NR_DRAM_BANKS
+ 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+ 		dram_bank_mmu_setup(i);
+ 	}
++#endif
+ 
+ #ifdef CONFIG_ARMV7_LPAE
+ 	/* Set up 4 PTE entries pointing to our 4 1GB page tables */
+diff --git a/common/image.c b/common/image.c
+index 8c35327..c8f2de1 100644
+--- a/common/image.c
++++ b/common/image.c
+@@ -475,7 +475,7 @@ ulong getenv_bootm_low(void)
+ 
+ #if defined(CONFIG_SYS_SDRAM_BASE)
+ 	return CONFIG_SYS_SDRAM_BASE;
+-#elif defined(CONFIG_ARM)
++#elif defined(CONFIG_ARM) && defined(CONFIG_NR_DRAM_BANKS)
+ 	return gd->bd->bi_dram[0].start;
+ #else
+ 	return 0;
+-- 
+2.7.4
+

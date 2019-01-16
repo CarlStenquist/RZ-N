@@ -1,0 +1,101 @@
+From 11974cfb2528d7d0505f3b80ddb0bd7b2063715d Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 15 Nov 2016 10:30:30 +0000
+Subject: [PATCH] dfu: dfu_sf: Skip write and/or erase for sectors that don't
+ need it
+
+Since reading from SPI Flash is much, much faster than erase and write,
+read the sector first and only erase and write it if needed.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/dfu/dfu.c    |  8 +++++++-
+ drivers/dfu/dfu_sf.c | 29 ++++++++++++++++++++++++++---
+ 2 files changed, 33 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/dfu/dfu.c b/drivers/dfu/dfu.c
+index 579b687..22a5dea 100644
+--- a/drivers/dfu/dfu.c
++++ b/drivers/dfu/dfu.c
+@@ -77,10 +77,12 @@ int dfu_init_env_entities(char *interface, char *devstr)
+ 
+ static unsigned char *dfu_buf;
+ static unsigned long dfu_buf_size;
++unsigned char *dfu_read_buf;
+ 
+ unsigned char *dfu_free_buf(void)
+ {
+ 	free(dfu_buf);
++	free(dfu_read_buf);
+ 	dfu_buf = NULL;
+ 	return dfu_buf;
+ }
+@@ -108,9 +110,13 @@ unsigned char *dfu_get_buf(struct dfu_entity *dfu)
+ 		dfu_buf_size = dfu->max_buf_size;
+ 
+ 	dfu_buf = memalign(CONFIG_SYS_CACHELINE_SIZE, dfu_buf_size);
+-	if (dfu_buf == NULL)
++	dfu_read_buf = memalign(CONFIG_SYS_CACHELINE_SIZE, dfu_buf_size);
++
++	if (dfu_buf == NULL || dfu_read_buf == NULL) {
+ 		printf("%s: Could not memalign 0x%lx bytes\n",
+ 		       __func__, dfu_buf_size);
++		dfu_free_buf();
++	}
+ 
+ 	return dfu_buf;
+ }
+diff --git a/drivers/dfu/dfu_sf.c b/drivers/dfu/dfu_sf.c
+index 5cb97c1..51311c7 100644
+--- a/drivers/dfu/dfu_sf.c
++++ b/drivers/dfu/dfu_sf.c
+@@ -12,6 +12,8 @@
+ #include <spi.h>
+ #include <spi_flash.h>
+ 
++extern unsigned char *dfu_read_buf;
++
+ static long dfu_get_medium_size_sf(struct dfu_entity *dfu)
+ {
+ 	return dfu->data.sf.size;
+@@ -34,13 +36,34 @@ static int dfu_write_medium_sf(struct dfu_entity *dfu,
+ 		u64 offset, void *buf, long *len)
+ {
+ 	int ret;
++	int i;
++	u8 *buf8 = buf;
+ 
+-	ret = spi_flash_erase(dfu->data.sf.dev,
+-			      find_sector(dfu, dfu->data.sf.start, offset),
+-			      roundup(*len, dfu->data.sf.dev->sector_size));
++	/* Erase and write are slow, so avoid if possible */
++	ret = dfu_read_medium_sf(dfu, offset, dfu_read_buf, len);
+ 	if (ret)
+ 		return ret;
+ 
++	if (memcmp(dfu_read_buf, buf, *len) == 0) {
++		debug("%s: offset %lld, skip erase,write\n", __func__, offset);
++		return 0;
++	}
++
++	/* Only erase the page if needed, i.e. setting any bit. */
++	/* WARNING: this code assumes that erase sets the data to 0xFF */
++	for (i = 0; i < *len; i++) {
++		if (buf8[i] & (buf8[i] ^ dfu_read_buf[i])) {
++			ret = spi_flash_erase(dfu->data.sf.dev,
++				find_sector(dfu, dfu->data.sf.start, offset),
++				roundup(*len, dfu->data.sf.dev->sector_size));
++			if (ret)
++				return ret;
++			break;
++		}
++	}
++	if (i == *len)
++		debug("%s: offset %lld, skip erase\n", __func__, offset);
++
+ 	ret = spi_flash_write(dfu->data.sf.dev, dfu->data.sf.start + offset,
+ 			      *len, buf);
+ 	if (ret)
+-- 
+2.7.4
+

@@ -1,0 +1,70 @@
+From a4679e9cea6ab1043685bc10bcab63c4dca4fb23 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 29 Nov 2016 18:13:32 +0000
+Subject: [PATCH] dfu: dfu_nand: Helper function to check valid nand
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/dfu/dfu_nand.c | 30 ++++++++++++++++--------------
+ 1 file changed, 16 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/dfu/dfu_nand.c b/drivers/dfu/dfu_nand.c
+index 23f1571..60d63f8 100644
+--- a/drivers/dfu/dfu_nand.c
++++ b/drivers/dfu/dfu_nand.c
+@@ -19,6 +19,18 @@
+ #include <jffs2/load_kernel.h>
+ #include <nand.h>
+ 
++static struct mtd_info *current_nand(int dev_index)
++{
++	if (dev_index < 0 ||
++	    dev_index >= CONFIG_SYS_MAX_NAND_DEVICE ||
++	    !nand_info[dev_index]) {
++		printf("%s: invalid nand device\n", __func__);
++		return ERR_PTR(-ENODEV);
++	}
++
++	return nand_info[dev_index];
++}
++
+ static int nand_block_op(enum dfu_op op, struct dfu_entity *dfu,
+ 			u64 offset, void *buf, long *len)
+ {
+@@ -37,14 +49,9 @@ static int nand_block_op(enum dfu_op op, struct dfu_entity *dfu,
+ 	lim = dfu->data.nand.start + dfu->data.nand.size - start;
+ 	count = *len;
+ 
+-	if (nand_curr_device < 0 ||
+-	    nand_curr_device >= CONFIG_SYS_MAX_NAND_DEVICE ||
+-	    !nand_info[nand_curr_device]) {
+-		printf("%s: invalid nand device\n", __func__);
++	mtd = current_nand(nand_curr_device);
++	if (IS_ERR(mtd))
+ 		return -1;
+-	}
+-
+-	mtd = nand_info[nand_curr_device];
+ 
+ 	if (op == DFU_OP_READ) {
+ 		ret = nand_read_skip_bad(mtd, start, &count, &actual,
+@@ -146,14 +153,9 @@ static int dfu_flush_medium_nand(struct dfu_entity *dfu)
+ 		struct mtd_info *mtd;
+ 		nand_erase_options_t opts;
+ 
+-		if (nand_curr_device < 0 ||
+-		    nand_curr_device >= CONFIG_SYS_MAX_NAND_DEVICE ||
+-		    !nand_info[nand_curr_device]) {
+-			printf("%s: invalid nand device\n", __func__);
++		mtd = current_nand(nand_curr_device);
++		if (IS_ERR(mtd))
+ 			return -1;
+-		}
+-
+-		mtd = nand_info[nand_curr_device];
+ 
+ 		memset(&opts, 0, sizeof(opts));
+ 		off = dfu->offset;
+-- 
+2.7.4
+

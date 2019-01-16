@@ -1,0 +1,46 @@
+From 492076b4a1c80004e5c318ecb3d7f2694bf80084 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 25 Nov 2016 10:34:10 +0000
+Subject: [PATCH] spl: spi: Allow mkimage payloads to be at the start of RAM
+
+With the SF layer, there is no need to load the mkimage header with
+the mkimage payload. With this change, we can now load a mkimage
+payload at the very start of RAM.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/spl/spl_spi.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/common/spl/spl_spi.c b/common/spl/spl_spi.c
+index c7ba1ab..bea7d2a 100644
+--- a/common/spl/spl_spi.c
++++ b/common/spl/spl_spi.c
+@@ -74,6 +74,14 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
+ 	struct image_header header;
+ 
+ 	/*
++	 * Skip loading the mkimage header. This is only necessary for block
++	 * based storage systems where the API requires loading whole blocks
++	 * into aligned destinations. The SF layer can load any amount of data
++	 * from flash and store it anywhere.
++	 */
++	spl_image->flags |= SPL_COPY_PAYLOAD_ONLY;
++
++	/*
+ 	 * Load U-Boot image from SPI flash into RAM
+ 	 */
+ 
+@@ -113,7 +121,8 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
+ 			err = spl_parse_image_header(spl_image, &header);
+ 			if (err)
+ 				return err;
+-			err = spi_flash_read(flash, CONFIG_SYS_SPI_U_BOOT_OFFS,
++			err = spi_flash_read(flash, CONFIG_SYS_SPI_U_BOOT_OFFS
++					     + sizeof(header),
+ 					     spl_image->size,
+ 					     (void *)spl_image->load_addr);
+ 		}
+-- 
+2.7.4
+

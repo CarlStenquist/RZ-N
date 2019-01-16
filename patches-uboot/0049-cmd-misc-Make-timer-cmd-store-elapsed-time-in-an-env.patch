@@ -1,0 +1,29 @@
+From 88e7d16b8ff94410402e5d1ddb94133cbb4d8e84 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 7 Nov 2016 15:08:02 +0000
+Subject: [PATCH] cmd: misc: Make timer cmd store elapsed time in an env var
+
+Storing the value in an env var so we can test it in a script.
+That we way we can check performance and also compare different
+settings, e.g. SPI clocks, easily using scripts.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ cmd/misc.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/cmd/misc.c b/cmd/misc.c
+index efcbb90..5ba7639 100644
+--- a/cmd/misc.c
++++ b/cmd/misc.c
+@@ -71,6 +71,7 @@ static int do_timer(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ 
+ 	if (!strcmp(argv[1], "get")) {
+ 		ulong msecs = get_timer(start) * 1000 / CONFIG_SYS_HZ;
++		setenv_ulong("milliseconds", msecs);
+ 		printf("%ld.%03d\n", msecs / 1000, (int)(msecs % 1000));
+ 	}
+ 
+-- 
+2.7.4
+

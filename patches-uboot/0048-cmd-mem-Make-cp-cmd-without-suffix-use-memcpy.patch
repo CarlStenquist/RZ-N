@@ -1,0 +1,57 @@
+From cee6f2d4cbc0740d3ec37e9e9f2f776aa3992565 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 7 Nov 2016 15:05:28 +0000
+Subject: [PATCH] cmd: mem: Make cp cmd without suffix use memcpy
+
+An architecture optimised memcpy is much, much faster than copying
+32-bit words at a time.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ cmd/mem.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/cmd/mem.c b/cmd/mem.c
+index a690957..731448a 100644
+--- a/cmd/mem.c
++++ b/cmd/mem.c
+@@ -374,6 +374,7 @@ static int do_mem_cp(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ {
+ 	ulong	addr, dest, count, bytes;
+ 	int	size;
++	bool	nosize = false;
+ 	const void *src;
+ 	void *buf;
+ 
+@@ -382,8 +383,13 @@ static int do_mem_cp(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ 
+ 	/* Check for size specification.
+ 	*/
+-	if ((size = cmd_get_data_size(argv[0], 4)) < 0)
++	if ((size = cmd_get_data_size(argv[0], 0)) < 0)
+ 		return 1;
++	/* Check to see if no size was specified */
++	if (size == 0) {
++		size = 4;
++		nosize = true;
++	}
+ 
+ 	addr = simple_strtoul(argv[1], NULL, 16);
+ 	addr += base_address;
+@@ -468,6 +474,13 @@ static int do_mem_cp(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ 	bytes = size * count;
+ 	buf = map_sysmem(dest, bytes);
+ 	src = map_sysmem(addr, bytes);
++
++	/* If size wasn't specified use memcpy for speed */
++	if (nosize) {
++		memcpy((void *)dest, (void *)addr, count*size);
++		return 0;
++	}
++
+ 	while (count-- > 0) {
+ 		if (size == 4)
+ 			*((u32 *)buf) = *((u32  *)src);
+-- 
+2.7.4
+

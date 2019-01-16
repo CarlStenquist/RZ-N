@@ -1,0 +1,47 @@
+From c0ff32f1a57ec1d73fba11cbd4d7913c9ad9a04e Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Wed, 1 Jun 2016 08:43:26 +0100
+Subject: [PATCH] ARM: nonsec: Allow configuration of the WFE/WFI instruction
+
+Some BootROMs put extra cores to sleep using the WFE instruction.
+In order to make it easier to support OSes that are run with and
+without running U-Boot first, add a configuration option to specify
+WFE instead of WFI.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ arch/arm/cpu/armv7/nonsec_virt.S | 4 ++++
+ scripts/config_whitelist.txt     | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/arch/arm/cpu/armv7/nonsec_virt.S b/arch/arm/cpu/armv7/nonsec_virt.S
+index 95ce938..e258041 100644
+--- a/arch/arm/cpu/armv7/nonsec_virt.S
++++ b/arch/arm/cpu/armv7/nonsec_virt.S
+@@ -207,7 +207,11 @@ ENDPROC(_nonsec_init)
+ #ifdef CONFIG_SMP_PEN_ADDR
+ /* void __weak smp_waitloop(unsigned previous_address); */
+ ENTRY(smp_waitloop)
++#ifdef CONFIG_SMP_PEN_WFE
++	wfe
++#else
+ 	wfi
++#endif
+ 	ldr	r1, =CONFIG_SMP_PEN_ADDR	@ load start address
+ 	ldr	r1, [r1]
+ #ifdef CONFIG_PEN_ADDR_BIG_ENDIAN
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index b3cfd4d..d5f5352 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -3965,6 +3965,7 @@ CONFIG_SMDK5420
+ CONFIG_SMDKC100
+ CONFIG_SMDKV310
+ CONFIG_SMP_PEN_ADDR
++CONFIG_SMP_PEN_WFE
+ CONFIG_SMSC_LPC47M
+ CONFIG_SMSC_SIO1007
+ CONFIG_SMSTP0_ENA
+-- 
+2.7.4
+

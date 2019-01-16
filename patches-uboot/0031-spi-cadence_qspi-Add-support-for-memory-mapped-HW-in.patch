@@ -1,0 +1,325 @@
+From 8d23254aa0fc066191e087c589ffdb86b1d76755 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 28 Oct 2016 11:47:21 +0100
+Subject: [PATCH] spi: cadence_qspi: Add support for memory mapped HW interface
+
+The Cadence QSPI controller can be configured to provide a memory
+mapped interface. When this option is used, the implementation often
+disables the indirect access mode (STIG).
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/spi/Kconfig             |   7 ++
+ drivers/spi/Makefile            |   2 +-
+ drivers/spi/cadence_qspi.c      |  10 +++
+ drivers/spi/cadence_qspi.h      |  10 +++
+ drivers/spi/cadence_qspi_apb.c  |   5 ++
+ drivers/spi/cadence_qspi_mmap.c | 138 ++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 171 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/spi/cadence_qspi_mmap.c
+
+diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
+index 0f51b3a..7c69aef 100644
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -47,6 +47,13 @@ config CADENCE_QSPI
+ 	  used to access the SPI NOR flash on platforms embedding this
+ 	  Cadence IP core.
+ 
++config CADENCE_QSPI_MMAP
++	bool "Enable direct (memory mapped) mode for Cadence QSPI driver"
++	depends on CADENCE_QSPI
++	help
++	  The IP can be configured to support direct (memory mapped) or indirect
++	  modes. If your hardware supports direct mode, you should use it.
++
+ config DESIGNWARE_SPI
+ 	bool "Designware SPI driver"
+ 	help
+diff --git a/drivers/spi/Makefile b/drivers/spi/Makefile
+index c1ce158..7e2a41a 100644
+--- a/drivers/spi/Makefile
++++ b/drivers/spi/Makefile
+@@ -21,7 +21,7 @@ obj-$(CONFIG_ATMEL_DATAFLASH_SPI) += atmel_dataflash_spi.o
+ obj-$(CONFIG_ATMEL_SPI) += atmel_spi.o
+ obj-$(CONFIG_BFIN_SPI) += bfin_spi.o
+ obj-$(CONFIG_BFIN_SPI6XX) += bfin_spi6xx.o
+-obj-$(CONFIG_CADENCE_QSPI) += cadence_qspi.o cadence_qspi_apb.o
++obj-$(CONFIG_CADENCE_QSPI) += cadence_qspi.o cadence_qspi_apb.o cadence_qspi_mmap.o
+ obj-$(CONFIG_CF_SPI) += cf_spi.o
+ obj-$(CONFIG_CF_QSPI) += cf_qspi.o
+ obj-$(CONFIG_DAVINCI_SPI) += davinci_spi.o
+diff --git a/drivers/spi/cadence_qspi.c b/drivers/spi/cadence_qspi.c
+index 6fa917d..89ad33d 100644
+--- a/drivers/spi/cadence_qspi.c
++++ b/drivers/spi/cadence_qspi.c
+@@ -192,13 +192,19 @@ static int cadence_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	struct udevice *bus = dev->parent;
+ 	struct cadence_spi_platdata *plat = bus->platdata;
+ 	struct cadence_spi_priv *priv = dev_get_priv(bus);
++#if !defined(CONFIG_CADENCE_QSPI_MMAP)
+ 	struct dm_spi_slave_platdata *dm_plat = dev_get_parent_platdata(dev);
++#endif
+ 	void *base = priv->regbase;
+ 	u8 *cmd_buf = priv->cmd_buf;
+ 	size_t data_bytes;
+ 	int err = 0;
+ 	u32 mode = CQSPI_STIG_WRITE;
+ 
++	/* Additional flags used for mmap write protection */
++	if (plat->use_mmap)
++		cadence_spi_xfer_mmap(dev, bitlen, dout, din, flags);
++
+ 	if (flags & SPI_XFER_BEGIN) {
+ 		/* copy command to local buffer */
+ 		priv->cmd_len = bitlen / 8;
+@@ -250,6 +256,7 @@ static int cadence_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 				priv->cmd_len, cmd_buf,
+ 				data_bytes, dout);
+ 		break;
++#if !defined(CONFIG_CADENCE_QSPI_MMAP)
+ 		case CQSPI_INDIRECT_READ:
+ 			err = cadence_qspi_apb_indirect_read_setup(plat,
+ 				priv->cmd_len, dm_plat->mode, cmd_buf);
+@@ -266,6 +273,7 @@ static int cadence_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 				(plat, data_bytes, dout);
+ 			}
+ 		break;
++#endif	/* !defined(CONFIG_CADENCE_QSPI_MMAP) */
+ 		default:
+ 			err = -1;
+ 			break;
+@@ -321,6 +329,7 @@ static int cadence_spi_ofdata_to_platdata(struct udevice *bus)
+ 	plat->tslch_ns = fdtdec_get_int(blob, subnode, "tslch-ns", 20);
+ 	plat->sample_edge_rising = fdtdec_get_bool(blob, subnode,
+ 		"sample-edge-rising");
++	plat->use_mmap = fdtdec_get_bool(blob, subnode, "memory-map-write");
+ 
+ 	debug("%s: regbase=%p ahbbase=%p max-frequency=%d page-size=%d\n",
+ 	      __func__, plat->regbase, plat->ahbbase, plat->max_hz,
+@@ -341,6 +350,7 @@ static const struct dm_spi_ops cadence_spi_ops = {
+ 
+ static const struct udevice_id cadence_spi_ids[] = {
+ 	{ .compatible = "cadence,qspi" },
++	{ .compatible = "renesas,rzn1-qspi" },
+ 	{ }
+ };
+ 
+diff --git a/drivers/spi/cadence_qspi.h b/drivers/spi/cadence_qspi.h
+index bae93a7..6b53450 100644
+--- a/drivers/spi/cadence_qspi.h
++++ b/drivers/spi/cadence_qspi.h
+@@ -89,6 +89,12 @@
+ #define	CQSPI_REG_IRQSTATUS			0x40
+ #define	CQSPI_REG_IRQMASK			0x44
+ 
++#define	CQSPI_REG_LOWER_WRITE_PROTECT		0x50
++#define	CQSPI_REG_UPPER_WRITE_PROTECT		0x54
++
++#define	CQSPI_REG_WRITE_PROTECT_CTRL		0x58
++#define	CQSPI_REG_WRPROT_ENABLE			BIT(1)
++
+ #define	CQSPI_REG_INDIRECTRD			0x60
+ #define	CQSPI_REG_INDIRECTRD_START		BIT(0)
+ #define	CQSPI_REG_INDIRECTRD_CANCEL		BIT(1)
+@@ -145,6 +151,7 @@ struct cadence_spi_platdata {
+ 	u32		tslch_ns;
+ 	u32		sram_size;
+ 	bool		sample_edge_rising;
++	bool		use_mmap;
+ };
+ 
+ struct cadence_spi_priv {
+@@ -162,6 +169,7 @@ struct cadence_spi_priv {
+ 
+ /* Functions call declaration */
+ void cadence_qspi_apb_controller_init(struct cadence_spi_platdata *plat);
++void cadence_qspi_apb_controller_init_mmap(struct cadence_spi_platdata *plat);
+ void cadence_qspi_apb_controller_enable(void *reg_base_addr);
+ void cadence_qspi_apb_controller_disable(void *reg_base_addr);
+ 
+@@ -192,5 +200,7 @@ void cadence_qspi_apb_delay(void *reg_base,
+ void cadence_qspi_apb_enter_xip(void *reg_base, char xip_dummy);
+ void cadence_qspi_apb_readdata_capture(void *reg_base,
+ 	bool bypass, bool edge, unsigned int delay);
++int cadence_spi_xfer_mmap(struct udevice *dev, unsigned int bitlen,
++	const void *dout, void *din, unsigned long flags);
+ 
+ #endif /* __CADENCE_QSPI_H__ */
+diff --git a/drivers/spi/cadence_qspi_apb.c b/drivers/spi/cadence_qspi_apb.c
+index 483bc8b..c2e24bc 100644
+--- a/drivers/spi/cadence_qspi_apb.c
++++ b/drivers/spi/cadence_qspi_apb.c
+@@ -293,6 +293,9 @@ void cadence_qspi_apb_controller_init(struct cadence_spi_platdata *plat)
+ 	/* Disable all interrupts */
+ 	writel(0, plat->regbase + CQSPI_REG_IRQMASK);
+ 
++	if (plat->use_mmap)
++		cadence_qspi_apb_controller_init_mmap(plat);
++
+ 	cadence_qspi_apb_controller_enable(plat->regbase);
+ }
+ 
+@@ -422,6 +425,7 @@ int cadence_qspi_apb_command_write(void *reg_base, unsigned int cmdlen,
+ 	return cadence_qspi_apb_exec_flash_cmd(reg_base, reg);
+ }
+ 
++#if !defined(CONFIG_CADENCE_QSPI_MMAP)
+ /* Opcode + Address (3/4 bytes) + dummy bytes (0-4 bytes) */
+ int cadence_qspi_apb_indirect_read_setup(struct cadence_spi_platdata *plat,
+ 	unsigned int cmdlen, unsigned int rx_width, const u8 *cmdbuf)
+@@ -683,6 +687,7 @@ failwr:
+ 	bounce_buffer_stop(&bb);
+ 	return ret;
+ }
++#endif	/* !defined(CONFIG_CADENCE_QSPI_MMAP) */
+ 
+ void cadence_qspi_apb_enter_xip(void *reg_base, char xip_dummy)
+ {
+diff --git a/drivers/spi/cadence_qspi_mmap.c b/drivers/spi/cadence_qspi_mmap.c
+new file mode 100644
+index 0000000..6916c83
+--- /dev/null
++++ b/drivers/spi/cadence_qspi_mmap.c
+@@ -0,0 +1,138 @@
++/*
++ * (C) Copyright 2016 Renesas Electronics Europe Ltd.
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <asm/io.h>
++#include <linux/errno.h>
++#include <spi.h>
++#include <spi_flash.h>
++#include "../mtd/spi/sf_internal.h"
++#include "cadence_qspi.h"
++
++#ifndef CONFIG_SPI_REGISTER_FLASH
++#error Requires the global define CONFIG_SPI_REGISTER_FLASH in your config file
++#endif
++
++void cadence_qspi_apb_controller_init_mmap(struct cadence_spi_platdata *plat)
++{
++	unsigned reg;
++
++	/* enable direct mode */
++	reg = readl(plat->regbase + CQSPI_REG_CONFIG);
++	reg |= CQSPI_REG_CONFIG_ENABLE;
++	reg |= CQSPI_REG_CONFIG_DIRECT;
++	writel(reg, plat->regbase + CQSPI_REG_CONFIG);
++
++	/* Enable AHB write protection, to prevent random write access
++	 * that could nuke the flash memory. Instead you have to explicitly
++	 * use 'sf write' to change the flash.
++	 * We set the protection range to the maximum, so the whole
++	 * address range should be protected, regardless of what size
++	 * is actually used.
++	 */
++	writel(0, plat->regbase + CQSPI_REG_LOWER_WRITE_PROTECT);
++	writel(~0, plat->regbase + CQSPI_REG_UPPER_WRITE_PROTECT);
++	writel(CQSPI_REG_WRPROT_ENABLE,
++		plat->regbase + CQSPI_REG_WRITE_PROTECT_CTRL);
++}
++
++/*
++ * This is an addition to the general spi slave interface, this function
++ * is called if a flash has been detected, to allow the slave to configure
++ * itself.
++ * In our case here, we need to know the number of address lines and stuff
++ */
++void spi_slave_register_flash(struct spi_flash *flash)
++{
++	struct spi_slave *slave = flash->spi;
++	struct udevice *bus = slave->dev->parent;
++	struct cadence_spi_platdata *plat = bus->platdata;
++	uint32_t rd_reg, wr_reg, reg;
++
++	if (flash->memory_map == NULL)
++		return;
++
++	debug("%s dummy %d - page %d sector %d erase %d(ffs %d)\n", __func__,
++	      flash->dummy_cycles, flash->page_size, flash->sector_size,
++	      flash->erase_size, ffs(flash->erase_size));
++	debug(" CMD rd %2x wr %02x addr:%d\n", flash->read_cmd,
++		flash->write_cmd, slave->addressing_bytes);
++
++	cadence_qspi_apb_controller_disable(plat->regbase);
++
++	/* Configure the device size and address bytes */
++	reg = readl(plat->regbase + CQSPI_REG_SIZE);
++	/* Clear the previous value */
++	reg &= ~(CQSPI_REG_SIZE_PAGE_MASK << CQSPI_REG_SIZE_PAGE_LSB);
++	reg &= ~(CQSPI_REG_SIZE_BLOCK_MASK << CQSPI_REG_SIZE_BLOCK_LSB);
++	reg |= (flash->page_size << CQSPI_REG_SIZE_PAGE_LSB);
++	reg |= ((ffs(flash->erase_size)-1) << CQSPI_REG_SIZE_BLOCK_LSB);
++	writel(reg, plat->regbase + CQSPI_REG_SIZE);
++
++	/* 3 or 4-byte addressing */
++	if (slave->addressing_bytes < 3)
++		slave->addressing_bytes = 3;
++
++	reg = readl(plat->regbase + CQSPI_REG_SIZE);
++	reg &= ~0xf;
++	reg |= slave->addressing_bytes - 1;
++	writel(reg, plat->regbase + CQSPI_REG_SIZE);
++
++	rd_reg = (flash->read_cmd << CQSPI_REG_RD_INSTR_OPCODE_LSB);
++
++	switch (flash->read_cmd) {
++	case CMD_READ_ARRAY_SLOW:		/* 0x03 */
++	case CMD_READ_ARRAY_SLOW_4B:		/* 0x13 */
++	case CMD_READ_ARRAY_FAST:		/* 0x0b */
++	case CMD_READ_ARRAY_FAST_4B:		/* 0x0c */
++		break;
++	case CMD_READ_DUAL_IO_FAST:		/* 0xbb */
++	case CMD_READ_DUAL_IO_FAST_4B:		/* 0xbc */
++		rd_reg |= (CQSPI_INST_TYPE_DUAL << CQSPI_REG_RD_INSTR_TYPE_ADDR_LSB);
++	case CMD_READ_DUAL_OUTPUT_FAST:		/* 0x3b */
++	case CMD_READ_DUAL_OUTPUT_FAST_4B:	/* 0x3c */
++		rd_reg |= (CQSPI_INST_TYPE_DUAL << CQSPI_REG_RD_INSTR_TYPE_DATA_LSB);
++		break;
++	case CMD_READ_QUAD_IO_FAST:		/* 0xeb */
++	case CMD_READ_QUAD_IO_FAST_4B:		/* 0xec */
++		rd_reg |= (CQSPI_INST_TYPE_QUAD << CQSPI_REG_RD_INSTR_TYPE_ADDR_LSB);
++	case CMD_READ_QUAD_OUTPUT_FAST:		/* 0x6b */
++	case CMD_READ_QUAD_OUTPUT_FAST_4B:	/* 0x6c */
++		rd_reg |= (CQSPI_INST_TYPE_QUAD << CQSPI_REG_RD_INSTR_TYPE_DATA_LSB);
++		break;
++	default:
++		debug("%s unsupported read command %02x\n", __func__, flash->read_cmd);
++	}
++
++	rd_reg |= (flash->dummy_cycles & CQSPI_REG_RD_INSTR_DUMMY_MASK) << CQSPI_REG_RD_INSTR_DUMMY_LSB;
++	writel(rd_reg, plat->regbase + CQSPI_REG_RD_INSTR);
++	writel(0xff, plat->regbase + CQSPI_REG_MODE_BIT);
++
++	/* Write cmd */
++	wr_reg = (flash->write_cmd << CQSPI_REG_RD_INSTR_OPCODE_LSB);
++	if  (flash->write_cmd == CMD_QUAD_PAGE_PROGRAM)
++		wr_reg |= (CQSPI_INST_TYPE_QUAD << CQSPI_REG_RD_INSTR_TYPE_DATA_LSB);
++	writel(wr_reg, plat->regbase + CQSPI_REG_WR_INSTR);
++
++	cadence_qspi_apb_controller_enable(plat->regbase);
++}
++
++int cadence_spi_xfer_mmap(struct udevice *dev, unsigned int bitlen,
++	const void *dout, void *din, unsigned long flags)
++{
++	struct udevice *bus = dev->parent;
++	struct cadence_spi_platdata *plat = bus->platdata;
++	int err = 0;
++
++	if (flags & SPI_XFER_MMAP_WRITE)
++		writel(0, plat->regbase + CQSPI_REG_WRITE_PROTECT_CTRL);
++
++	if (flags & (SPI_XFER_MMAP_END | SPI_XFER_END))
++		writel(CQSPI_REG_WRPROT_ENABLE,
++			plat->regbase + CQSPI_REG_WRITE_PROTECT_CTRL);
++
++	return err;
++}
+-- 
+2.7.4
+

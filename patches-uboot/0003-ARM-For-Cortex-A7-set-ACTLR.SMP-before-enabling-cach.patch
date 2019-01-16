@@ -1,0 +1,50 @@
+From efd9b8be504f091f4774fd9fedef404a2005882b Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 18 Feb 2015 10:52:45 +0000
+Subject: [PATCH] ARM: For Cortex A7, set ACTLR.SMP before enabling caches
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/cpu/armv7/start.S   | 13 +++++++++++++
+ scripts/config_whitelist.txt |  1 +
+ 2 files changed, 14 insertions(+)
+
+diff --git a/arch/arm/cpu/armv7/start.S b/arch/arm/cpu/armv7/start.S
+index 7eee54b..77aa43b 100644
+--- a/arch/arm/cpu/armv7/start.S
++++ b/arch/arm/cpu/armv7/start.S
+@@ -133,6 +133,19 @@ ENDPROC(switch_to_hypervisor)
+  *
+  *************************************************************************/
+ ENTRY(cpu_init_cp15)
++#if defined(CONFIG_CORTEX_A7)
++	/* Cortex A7 needs SMP bit setting before enabling the MMU/caches */
++	mrc	p15, 0, r0, c1, c0, 0
++	bic	r0, r0, #0x00000007	@ clear bits 2:0 (-CAM)
++	bic	r0, r0, #0x00000800	@ clear bit 11 (Z---) BTB
++	bic	r0, r0, #0x00001000	@ clear bit 12 (I) I-cache
++	mcr	p15, 0, r0, c1, c0, 0
++
++	mrc	p15, 0, r0, c1, c0, 1
++	orr	r0, r0, #0x00000040	@ set SMP bit
++	mcr	p15, 0, r0, c1, c0, 1
++#endif
++
+ 	/*
+ 	 * Invalidate L1 I/D
+ 	 */
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index da2a5d5..b3cfd4d 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -666,6 +666,7 @@ CONFIG_CONTROLCENTERD
+ CONFIG_CON_ROT
+ CONFIG_CORE1_RUN
+ CONFIG_CORE_COUNT
++CONFIG_CORTEX_A7
+ CONFIG_CORTINA_FW_ADDR
+ CONFIG_CORTINA_FW_LENGTH
+ CONFIG_CPCI405
+-- 
+2.7.4
+

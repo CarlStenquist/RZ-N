@@ -1,0 +1,79 @@
+From 53264d8b1ef51a7a5409357e4c9e2870a763c31c Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 7 Nov 2016 12:08:17 +0000
+Subject: [PATCH] mtd: nand: Change ONFI timing modes types to save memory
+
+This is particularly important for SPL builds.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ include/linux/mtd/nand.h | 40 ++++++++++++++++++++--------------------
+ 1 file changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/include/linux/mtd/nand.h b/include/linux/mtd/nand.h
+index d55807b..b292157 100644
+--- a/include/linux/mtd/nand.h
++++ b/include/linux/mtd/nand.h
+@@ -1060,39 +1060,39 @@ uint8_t nand_read_byte(struct mtd_info *mtd);
+ struct nand_sdr_timings {
+ 	u32 tALH_min;
+ 	u32 tADL_min;
+-	u32 tALS_min;
+-	u32 tAR_min;
++	u16 tALS_min;
++	u16 tAR_min;
+ 	u32 tCEA_max;
+-	u32 tCEH_min;
+-	u32 tCH_min;
++	u16 tCEH_min;
++	u16 tCH_min;
+ 	u32 tCHZ_max;
+-	u32 tCLH_min;
+-	u32 tCLR_min;
+-	u32 tCLS_min;
+-	u32 tCOH_min;
++	u16 tCLH_min;
++	u16 tCLR_min;
++	u16 tCLS_min;
++	u16 tCOH_min;
+ 	u32 tCS_min;
+-	u32 tDH_min;
+-	u32 tDS_min;
++	u16 tDH_min;
++	u16 tDS_min;
+ 	u32 tFEAT_max;
+-	u32 tIR_min;
++	u16 tIR_min;
+ 	u32 tITC_max;
+ 	u32 tRC_min;
+-	u32 tREA_max;
+-	u32 tREH_min;
+-	u32 tRHOH_min;
++	u16 tREA_max;
++	u16 tREH_min;
++	u16 tRHOH_min;
+ 	u32 tRHW_min;
+ 	u32 tRHZ_max;
+-	u32 tRLOH_min;
+-	u32 tRP_min;
+-	u32 tRR_min;
++	u16 tRLOH_min;
++	u16 tRP_min;
++	u16 tRR_min;
+ 	u64 tRST_max;
+ 	u32 tWB_max;
+ 	u32 tWC_min;
+-	u32 tWH_min;
++	u16 tWH_min;
+ 	u32 tWHR_min;
+-	u32 tWP_min;
++	u16 tWP_min;
+ 	u32 tWW_min;
+-};
++} __attribute__((packed));
+ 
+ /* get timing characteristics from ONFI timing mode. */
+ const struct nand_sdr_timings *onfi_async_timing_mode_to_sdr_timings(int mode);
+-- 
+2.7.4
+

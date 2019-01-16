@@ -1,0 +1,62 @@
+From e8efca1e38d4c3d01988492e646d9b9c89b41ef0 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Thu, 15 Dec 2016 16:06:57 +0000
+Subject: [PATCH] spl: nand: Expose spl_nand_load_element
+
+Also allow it to call nand_init() and handle being called multiple
+times.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/spl/spl_nand.c | 12 ++++++++++--
+ include/spl.h         |  2 ++
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/common/spl/spl_nand.c b/common/spl/spl_nand.c
+index 6fc8e39..d62cdd3 100644
+--- a/common/spl/spl_nand.c
++++ b/common/spl/spl_nand.c
+@@ -12,6 +12,8 @@
+ #include <libfdt_env.h>
+ #include <fdt.h>
+ 
++static int nand_inited;
++
+ #if defined(CONFIG_SPL_NAND_RAW_ONLY)
+ int spl_nand_load_image(struct spl_image_info *spl_image,
+ 			struct spl_boot_device *bootdev)
+@@ -40,11 +42,17 @@ static ulong spl_nand_fit_read(struct spl_load_info *load, ulong offs,
+ 		return 0;
+ }
+ 
+-static int spl_nand_load_element(struct spl_image_info *spl_image,
+-				 int offset, struct image_header *header)
++int spl_nand_load_element(struct spl_image_info *spl_image,
++			  int offset, struct image_header *header)
+ {
+ 	int err;
+ 
++	/* Allow multiple calls */
++	if (!nand_inited) {
++		nand_init();
++		nand_inited = 1;
++	}
++
+ 	err = nand_spl_load_image(offset, sizeof(*header), (void *)header);
+ 	if (err)
+ 		return err;
+diff --git a/include/spl.h b/include/spl.h
+index 784e839..d773501 100644
+--- a/include/spl.h
++++ b/include/spl.h
+@@ -253,5 +253,7 @@ int spl_mmc_load_image(struct spl_image_info *spl_image,
+ struct spi_flash *spl_spi_probe(void);
+ int spl_spi_load_one_uimage(struct spl_image_info *spl_image,
+ 	struct spi_flash *flash, u32 offset);
++int spl_nand_load_element(struct spl_image_info *spl_image,
++			  int offset, struct image_header *header);
+ 
+ #endif
+-- 
+2.7.4
+

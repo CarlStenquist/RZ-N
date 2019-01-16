@@ -1,0 +1,30 @@
+From 5de61e805cd6ffaf81adef58994e9e2d71aed6ab Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 13 Feb 2017 13:19:16 +0000
+Subject: [PATCH] armv7m: Fix larger builds
+
+The branch instruction only has an 11-bit relative target address, which
+is sometimes not enough.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/cpu/armv7m/start.S | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/cpu/armv7m/start.S b/arch/arm/cpu/armv7m/start.S
+index 49f2720..d79adb5 100644
+--- a/arch/arm/cpu/armv7m/start.S
++++ b/arch/arm/cpu/armv7m/start.S
+@@ -8,7 +8,8 @@
+ .globl	reset
+ .type reset, %function
+ reset:
+-	b	_main
++	ldr	r0, =_main
++	mov	pc, r0
+ 
+ .globl	c_runtime_cpu_setup
+ c_runtime_cpu_setup:
+-- 
+2.7.4
+

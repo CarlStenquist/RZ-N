@@ -1,0 +1,78 @@
+From ebd9874cfdf0cd4fce18a85cdc06d1c922c0cbda Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Wed, 20 Apr 2016 09:12:04 +0100
+Subject: [PATCH] spl: nand: Allow compilation without hard coded offset
+
+Using the multi-image, it is possible to want NAND support without hard
+coded offsets. This patch disables compilation of the hard coded loader
+in that case.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ common/spl/spl_nand.c            | 2 +-
+ drivers/mtd/nand/nand_spl_load.c | 7 ++++++-
+ include/nand.h                   | 2 +-
+ 3 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/common/spl/spl_nand.c b/common/spl/spl_nand.c
+index cd39f9b..6fc8e39 100644
+--- a/common/spl/spl_nand.c
++++ b/common/spl/spl_nand.c
+@@ -86,7 +86,7 @@ static int spl_nand_load_image(struct spl_image_info *spl_image,
+ 
+ 	/*use CONFIG_SYS_TEXT_BASE as temporary storage area */
+ 	header = (struct image_header *)(CONFIG_SYS_TEXT_BASE);
+-#ifdef CONFIG_SPL_OS_BOOT
++#if  defined(CONFIG_SPL_OS_BOOT) && defined(CONFIG_SYS_NAND_SPL_KERNEL_OFFS)
+ 	if (!spl_start_uboot()) {
+ 		/*
+ 		 * load parameter image
+diff --git a/drivers/mtd/nand/nand_spl_load.c b/drivers/mtd/nand/nand_spl_load.c
+index 5a25644..26af30d 100644
+--- a/drivers/mtd/nand/nand_spl_load.c
++++ b/drivers/mtd/nand/nand_spl_load.c
+@@ -15,15 +15,18 @@
+  */
+ void nand_boot(void)
+ {
++#ifdef CONFIG_SYS_NAND_U_BOOT_START
+ 	__attribute__((noreturn)) void (*uboot)(void);
++#endif
+ 
+ 	/*
+ 	 * Load U-Boot image from NAND into RAM
+ 	 */
++#ifdef CONFIG_SYS_NAND_U_BOOT_DST
+ 	nand_spl_load_image(CONFIG_SYS_NAND_U_BOOT_OFFS,
+ 			CONFIG_SYS_NAND_U_BOOT_SIZE,
+ 			(void *)CONFIG_SYS_NAND_U_BOOT_DST);
+-
++#endif
+ #ifdef CONFIG_NAND_ENV_DST
+ 	nand_spl_load_image(CONFIG_ENV_OFFSET, CONFIG_ENV_SIZE,
+ 			(void *)CONFIG_NAND_ENV_DST);
+@@ -37,6 +40,8 @@ void nand_boot(void)
+ 	/*
+ 	 * Jump to U-Boot image
+ 	 */
++#ifdef CONFIG_SYS_NAND_U_BOOT_START
+ 	uboot = (void *)CONFIG_SYS_NAND_U_BOOT_START;
+ 	(*uboot)();
++#endif
+ }
+diff --git a/include/nand.h b/include/nand.h
+index b6eb223..2af6c1a 100644
+--- a/include/nand.h
++++ b/include/nand.h
+@@ -129,7 +129,7 @@ void nand_deselect(void);
+ void board_nand_select_device(struct nand_chip *nand, int chip);
+ #endif
+ 
+-__attribute__((noreturn)) void nand_boot(void);
++void nand_boot(void);
+ 
+ #endif
+ 
+-- 
+2.7.4
+

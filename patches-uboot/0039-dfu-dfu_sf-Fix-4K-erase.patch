@@ -1,0 +1,32 @@
+From 7bd19900dee0c82710395e099f26ca61da32e649 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 21 Dec 2016 10:46:42 +0000
+Subject: [PATCH] dfu: dfu_sf: Fix 4K erase
+
+This only affects dfu with multiple targets. In this situation, the length of
+data passed in may be bigger than the SF sector size. Normally, this is not
+a problem because dfu_sf limits the size to the SF sector size. However, when
+using multiple dfu targets, the size of the data can be determined by any one
+of the dfu targets.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/dfu/dfu_sf.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/dfu/dfu_sf.c b/drivers/dfu/dfu_sf.c
+index 628ce20..5cb97c1 100644
+--- a/drivers/dfu/dfu_sf.c
++++ b/drivers/dfu/dfu_sf.c
+@@ -37,7 +37,7 @@ static int dfu_write_medium_sf(struct dfu_entity *dfu,
+ 
+ 	ret = spi_flash_erase(dfu->data.sf.dev,
+ 			      find_sector(dfu, dfu->data.sf.start, offset),
+-			      dfu->data.sf.dev->sector_size);
++			      roundup(*len, dfu->data.sf.dev->sector_size));
+ 	if (ret)
+ 		return ret;
+ 
+-- 
+2.7.4
+

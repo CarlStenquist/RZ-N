@@ -1,0 +1,28 @@
+From 89da005dabd25e783c62e31940a53172c667aecc Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 16 Jan 2017 16:24:29 +0000
+Subject: [PATCH] armv7m: Make reset_cpu() weak
+
+Some boards have their own way to reset the cpu.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/cpu/armv7m/cpu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/cpu/armv7m/cpu.c b/arch/arm/cpu/armv7m/cpu.c
+index 58cde93..c3e4734 100644
+--- a/arch/arm/cpu/armv7m/cpu.c
++++ b/arch/arm/cpu/armv7m/cpu.c
+@@ -24,7 +24,7 @@ int cleanup_before_linux(void)
+ /*
+  * Perform the low-level reset.
+  */
+-void reset_cpu(ulong addr)
++__weak void reset_cpu(ulong addr)
+ {
+ 	/*
+ 	 * Perform reset but keep priority group unchanged.
+-- 
+2.7.4
+

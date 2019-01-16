@@ -1,0 +1,25 @@
+From 5e9dbc2ba4829f758a065d02094f1ee6f3935f81 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 28 Apr 2017 12:36:46 +0100
+Subject: [PATCH] fpga: lattice: jtag_init() needs calling
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/fpga/lattice.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/fpga/lattice.c b/drivers/fpga/lattice.c
+index 615a485..5e1f965 100644
+--- a/drivers/fpga/lattice.c
++++ b/drivers/fpga/lattice.c
+@@ -239,6 +239,7 @@ signed char ispVM(void)
+ 
+ 	printf("VME file checked: starting downloading to FPGA\n");
+ 
++	pfns->jtag_init();
+ 	ispVMStart();
+ 
+ 	cRetCode = ispVMCode();
+-- 
+2.7.4
+

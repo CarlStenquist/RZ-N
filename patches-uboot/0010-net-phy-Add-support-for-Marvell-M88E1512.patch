@@ -1,0 +1,43 @@
+From 913a56a7dea9fa9357f79492c9721512240e1249 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 9 Dec 2016 12:51:51 +0000
+Subject: [PATCH] net: phy: Add support for Marvell M88E1512
+
+This device also works with the 88E1518 code, so we just adjust
+the UID mask accordingly.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+v3:
+ Correct the mask.
+v2:
+ Don't add a new entry, just adjust the UID mask.
+---
+ drivers/net/phy/marvell.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/phy/marvell.c b/drivers/net/phy/marvell.c
+index 06029c0..4ddb85d 100644
+--- a/drivers/net/phy/marvell.c
++++ b/drivers/net/phy/marvell.c
+@@ -560,10 +560,15 @@ static struct phy_driver M88E1510_driver = {
+ 	.shutdown = &genphy_shutdown,
+ };
+ 
++/*
++ * This supports:
++ *  88E1518, uid 0x1410dd1
++ *  88E1512, uid 0x1410dd4
++ */
+ static struct phy_driver M88E1518_driver = {
+ 	.name = "Marvell 88E1518",
+-	.uid = 0x1410dd1,
+-	.mask = 0xfffffff,
++	.uid = 0x1410dd0,
++	.mask = 0xffffffa,
+ 	.features = PHY_GBIT_FEATURES,
+ 	.config = &m88e1518_config,
+ 	.startup = &m88e1011s_startup,
+-- 
+2.7.4
+

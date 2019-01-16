@@ -1,0 +1,43 @@
+From ce000ed1f026638c7d83eda5c1aa73af2f07b1b0 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 16 Nov 2016 11:35:41 +0000
+Subject: [PATCH] ARM: cache_v7: Allow cpus to setup MMU regions in addition to
+ DRAM
+
+This allows CPUs to cache memory-mapped SPI Flashes to improve throughput.
+
+Additionally, this makes a big difference to overall performance when
+U-Boot does not relocate to DRAM, but instead stays in SRAM, as it allows
+us to cache SRAM.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/lib/cache-cp15.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm/lib/cache-cp15.c b/arch/arm/lib/cache-cp15.c
+index e9bbcf5..3cd5350 100644
+--- a/arch/arm/lib/cache-cp15.c
++++ b/arch/arm/lib/cache-cp15.c
+@@ -114,6 +114,10 @@ __weak void dram_bank_mmu_setup(int bank)
+ 	}
+ }
+ 
++__weak void post_mmu_setup(void)
++{
++}
++
+ /* to activate the MMU we need to set up virtual memory: use 1M areas */
+ static inline void mmu_setup(void)
+ {
+@@ -125,6 +129,7 @@ static inline void mmu_setup(void)
+ 	for (i = 0; i < ((4096ULL * 1024 * 1024) >> MMU_SECTION_SHIFT); i++)
+ 		set_section_dcache(i, DCACHE_OFF);
+ 
++	post_mmu_setup();
+ 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+ 		dram_bank_mmu_setup(i);
+ 	}
+-- 
+2.7.4
+

@@ -1,0 +1,89 @@
+From 3b9b9ba73d4a16d24190876996e0215d11c8419a Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Mon, 12 Dec 2016 18:44:57 +0000
+Subject: [PATCH] arm: Make switching to HYP mode conditional
+
+When switching to SECURE mode, instead of always switching to HYP mode
+or not based on a build-time option (CONFIG_ARMV7_VIRT), introduce a
+global var that can be used to specify whether we switch to HYP mode.
+
+When running bootm, get the option to switch to HYP from a new env
+variable, "boot_hyp".
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ arch/arm/cpu/armv7/Kconfig       | 4 +++-
+ arch/arm/cpu/armv7/nonsec_virt.S | 9 +++++++++
+ arch/arm/lib/bootm.c             | 5 +++++
+ 3 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/cpu/armv7/Kconfig b/arch/arm/cpu/armv7/Kconfig
+index b9c4f4e..e120adf 100644
+--- a/arch/arm/cpu/armv7/Kconfig
++++ b/arch/arm/cpu/armv7/Kconfig
+@@ -32,7 +32,9 @@ config ARMV7_VIRT
+ 	depends on CPU_V7_HAS_VIRT && ARMV7_NONSEC
+ 	default y
+ 	---help---
+-	Say Y here to boot in hypervisor (HYP) mode when booting non-secure.
++	Say Y here to optionally boot in hypervisor (HYP) mode when booting non-secure.
++	U-Boot will look for the boot_hyp env variable, and will only switch to
++	HYP if this variable is set to "yes".
+ 
+ config ARMV7_PSCI
+ 	bool "Enable PSCI support" if EXPERT
+diff --git a/arch/arm/cpu/armv7/nonsec_virt.S b/arch/arm/cpu/armv7/nonsec_virt.S
+index e258041..4009ff2 100644
+--- a/arch/arm/cpu/armv7/nonsec_virt.S
++++ b/arch/arm/cpu/armv7/nonsec_virt.S
+@@ -79,8 +79,13 @@ _secure_monitor:
+ 	mov	r6, #SVC_MODE			@ default mode is SVC
+ 	is_cpu_virt_capable r4
+ #ifdef CONFIG_ARMV7_VIRT
++	bne	_skip_hyp			@ Don't hyp if not asked to
++	ldr	r7, =nonsec_and_hyp		@ Get the global
++	ldr	r7, [r7]
++	cmp	r7, #1
+ 	orreq	r5, r5, #0x100			@ allow HVC instruction
+ 	moveq	r6, #HYP_MODE			@ Enter the kernel as HYP
++_skip_hyp:
+ #endif
+ 
+ 	mcr	p15, 0, r5, c1, c1, 0		@ write SCR (with NS bit set)
+@@ -102,6 +107,10 @@ _secure_monitor:
+ 	msr	spsr_cxfs, ip			@ Set full SPSR
+ 	movs	pc, lr				@ ERET to non-secure
+ 
++	.globl 	nonsec_and_hyp
++nonsec_and_hyp:
++	.word 0
++
+ ENTRY(_do_nonsec_entry)
+ 	mov	ip, r0
+ 	mov	r0, r1
+diff --git a/arch/arm/lib/bootm.c b/arch/arm/lib/bootm.c
+index 43cc83e..d0bf729 100644
+--- a/arch/arm/lib/bootm.c
++++ b/arch/arm/lib/bootm.c
+@@ -298,6 +298,10 @@ static void switch_to_el1(void)
+ #endif
+ #endif
+ 
++#if defined(CONFIG_ARMV7_NONSEC) || defined(CONFIG_ARMV7_VIRT)
++extern int nonsec_and_hyp;
++#endif
++
+ /* Subcommand: GO */
+ static void boot_jump_linux(bootm_headers_t *images, int flag)
+ {
+@@ -370,6 +374,7 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
+ 	if (!fake) {
+ #ifdef CONFIG_ARMV7_NONSEC
+ 		if (armv7_boot_nonsec()) {
++			nonsec_and_hyp = getenv_yesno("boot_hyp");
+ 			armv7_init_nonsec();
+ 			secure_ram_addr(_do_nonsec_entry)(kernel_entry,
+ 							  0, machid, r2);
+-- 
+2.7.4
+

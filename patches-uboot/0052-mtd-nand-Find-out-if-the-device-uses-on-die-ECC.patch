@@ -1,0 +1,73 @@
+From e5cde355ec55167e155dc594e0f6fea4707214ef Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Thu, 10 Nov 2016 15:25:52 +0000
+Subject: [PATCH] mtd: nand: Find out if the device uses on-die ECC
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/mtd/nand/nand_base.c | 28 ++++++++++++++++++++++++++++
+ include/linux/mtd/nand.h     |  2 ++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/drivers/mtd/nand/nand_base.c b/drivers/mtd/nand/nand_base.c
+index d9e5fc9..168c600 100644
+--- a/drivers/mtd/nand/nand_base.c
++++ b/drivers/mtd/nand/nand_base.c
+@@ -3735,6 +3735,34 @@ ident_done:
+ 	if (mtd->writesize > 512 && chip->cmdfunc == nand_command)
+ 		chip->cmdfunc = nand_command_lp;
+ 
++	/* Determine if the device has on-chip ECC and is enabled */
++	if (chip->onfi_params.jedec_id == NAND_MFR_MICRON) {
++		switch (id_data[1])
++		{
++		case 0xf1:	/* MT29F1G08ABADA */
++		case 0xa1:	/* MT29F1G08ABBDA */
++		case 0xb1:	/* MT29F1G16ABBDA */
++
++		case 0xaa:	/* MT29F2G08ABBEA */
++		case 0xba:	/* MT29F2G16ABBEA */
++		case 0xda:	/* MT29F2G08ABAEA */
++		case 0xca:	/* MT29F2G16ABAEA */
++
++		case 0xdc:	/* MT29F4G08ABADA */
++		case 0xcc:	/* MT29F4G16ABADA */
++		case 0xac:	/* MT29F4G08ABBDA */
++		case 0xbc:	/* MT29F4G16ABBDA */
++		case 0xa3:	/* MT29F8G08ADBDA */
++		case 0xb3:	/* MT29F8G16ADBDA */
++		case 0xd3:	/* MT29F8G08ADADA / MT29F16G08AJADA */
++		case 0xc3:	/* MT29F8G16ADADA */
++
++			if (id_data[4] & 0x80) 
++				chip->ecc_on_chip = 1;
++			break;
++		}
++	}
++
+ 	pr_info("device found, Manufacturer ID: 0x%02x, Chip ID: 0x%02x\n",
+ 		*maf_id, *dev_id);
+ 
+diff --git a/include/linux/mtd/nand.h b/include/linux/mtd/nand.h
+index b292157..f2329b9 100644
+--- a/include/linux/mtd/nand.h
++++ b/include/linux/mtd/nand.h
+@@ -645,6 +645,7 @@ struct nand_buffers {
+  * @ecc_step_ds:	[INTERN] ECC step required by the @ecc_strength_ds,
+  *                      also from the datasheet. It is the recommended ECC step
+  *			size, if known; if unknown, set to zero.
++ * @ecc_on_chip:	[INTERN] ECC is handled internally by the Flash chip.
+  * @onfi_timing_mode_default: [INTERN] default ONFI timing mode. This field is
+  *			      either deduced from the datasheet if the NAND
+  *			      chip is not ONFI compliant or set to 0 if it is
+@@ -735,6 +736,7 @@ struct nand_chip {
+ 	uint8_t bits_per_cell;
+ 	uint16_t ecc_strength_ds;
+ 	uint16_t ecc_step_ds;
++	bool ecc_on_chip;
+ 	int onfi_timing_mode_default;
+ 	int badblockpos;
+ 	int badblockbits;
+-- 
+2.7.4
+

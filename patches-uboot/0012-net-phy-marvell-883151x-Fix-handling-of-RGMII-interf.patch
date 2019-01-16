@@ -1,0 +1,103 @@
+From 31c1ca861cd6e5a0d75ee657bcc2f59b81132881 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 20 Mar 2017 17:21:44 +0000
+Subject: [PATCH] net: phy: marvell 883151x: Fix handling of RGMII interface
+ types
+
+It would appear that the 88E1518 code was only used with SGMII
+interface as the code was programming the wrong registers
+for tx and rx delays used with the rgmii, rgmii-txid, rgmii-rxid
+and rgmii-id interface types.
+
+Note that the PHY defaults to rgmii-id which might explain why no
+one noticed before.
+
+Tested on 88E1512 PHY which is from the same family as 88E1518.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/net/phy/marvell.c | 47 ++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 46 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/phy/marvell.c b/drivers/net/phy/marvell.c
+index 00d0719..b8b9679 100644
+--- a/drivers/net/phy/marvell.c
++++ b/drivers/net/phy/marvell.c
+@@ -13,6 +13,8 @@
+ 
+ #define PHY_AUTONEGOTIATE_TIMEOUT 5000
+ 
++#define MII_MARVELL_PHY_PAGE		22
++
+ /* 88E1011 PHY Status Register */
+ #define MIIM_88E1xxx_PHY_STATUS		0x11
+ #define MIIM_88E1xxx_PHYSTAT_SPEED	0xc000
+@@ -63,6 +65,12 @@
+ 
+ #define MIIM_88E1121_PHY_PAGE		22
+ 
++#define MII_88E1121_PHY_MSCR_PAGE	2
++#define MII_88E1121_PHY_MSCR_REG	21
++#define MII_88E1121_PHY_MSCR_RX_DELAY	BIT(5)
++#define MII_88E1121_PHY_MSCR_TX_DELAY	BIT(4)
++#define MII_88E1121_PHY_MSCR_DELAY_MASK	(~(0x3 << 4))
++
+ /* 88E1145 Extended PHY Specific Control Register */
+ #define MIIM_88E1145_PHY_EXT_CR 20
+ #define MIIM_M88E1145_RGMII_RX_DELAY	0x0080
+@@ -280,6 +288,8 @@ void m88e1518_phy_writebits(struct phy_device *phydev,
+ 
+ static int m88e1518_config(struct phy_device *phydev)
+ {
++	u16 reg;
++
+ 	/*
+ 	 * As per Marvell Release Notes - Alaska 88E1510/88E1518/88E1512
+ 	 * /88E1514 Rev A0, Errata Section 3.1
+@@ -314,7 +324,42 @@ static int m88e1518_config(struct phy_device *phydev)
+ 		udelay(100);
+ 	}
+ 
+-	return m88e1111s_config(phydev);
++	if (phydev->interface == PHY_INTERFACE_MODE_SGMII) {
++		reg = phy_read(phydev,
++			MDIO_DEVAD_NONE, MIIM_88E1111_PHY_EXT_SR);
++
++		reg &= ~(MIIM_88E1111_HWCFG_MODE_MASK);
++		reg |= MIIM_88E1111_HWCFG_MODE_SGMII_NO_CLK;
++		reg |= MIIM_88E1111_HWCFG_FIBER_COPPER_AUTO;
++
++		phy_write(phydev, MDIO_DEVAD_NONE,
++			MIIM_88E1111_PHY_EXT_SR, reg);
++	}
++
++	if (phy_interface_is_rgmii(phydev)) {
++		phy_write(phydev, MDIO_DEVAD_NONE, MII_MARVELL_PHY_PAGE, MII_88E1121_PHY_MSCR_PAGE);
++
++		reg = phy_read(phydev, MDIO_DEVAD_NONE, MII_88E1121_PHY_MSCR_REG);
++		reg &= ~MII_88E1121_PHY_MSCR_RX_DELAY;
++		reg &= ~MII_88E1121_PHY_MSCR_TX_DELAY;
++		if (phydev->interface == PHY_INTERFACE_MODE_RGMII_ID)
++			reg |= MII_88E1121_PHY_MSCR_RX_DELAY | MII_88E1121_PHY_MSCR_TX_DELAY;
++		else if (phydev->interface == PHY_INTERFACE_MODE_RGMII_RXID)
++			reg |= MII_88E1121_PHY_MSCR_RX_DELAY;
++		else if (phydev->interface == PHY_INTERFACE_MODE_RGMII_TXID)
++			reg |= MII_88E1121_PHY_MSCR_TX_DELAY;
++		phy_write(phydev, MDIO_DEVAD_NONE, MII_88E1121_PHY_MSCR_REG, reg);
++
++		phy_write(phydev, MDIO_DEVAD_NONE, MII_MARVELL_PHY_PAGE, 0);
++	}
++
++	/* soft reset */
++	phy_reset(phydev);
++
++	genphy_config_aneg(phydev);
++	genphy_restart_aneg(phydev);
++
++	return 0;
+ }
+ 
+ /* Marvell 88E1510 */
+-- 
+2.7.4
+

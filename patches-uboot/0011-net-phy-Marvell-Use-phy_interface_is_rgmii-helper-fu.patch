@@ -1,0 +1,36 @@
+From 604c34f429aa020ef4810e539f7a7441fd2d9048 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 9 Dec 2016 10:20:22 +0000
+Subject: [PATCH] net: phy: Marvell: Use phy_interface_is_rgmii helper function
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+Reviewed-by: Stefan Roese <sr@denx.de>
+Acked-by: Joe Hershberger <joe.hershberger@ni.com>
+---
+v3:
+ No changes
+v2:
+ No changes
+---
+ drivers/net/phy/marvell.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/drivers/net/phy/marvell.c b/drivers/net/phy/marvell.c
+index 4ddb85d..00d0719 100644
+--- a/drivers/net/phy/marvell.c
++++ b/drivers/net/phy/marvell.c
+@@ -177,10 +177,7 @@ static int m88e1111s_config(struct phy_device *phydev)
+ {
+ 	int reg;
+ 
+-	if ((phydev->interface == PHY_INTERFACE_MODE_RGMII) ||
+-			(phydev->interface == PHY_INTERFACE_MODE_RGMII_ID) ||
+-			(phydev->interface == PHY_INTERFACE_MODE_RGMII_RXID) ||
+-			(phydev->interface == PHY_INTERFACE_MODE_RGMII_TXID)) {
++	if (phy_interface_is_rgmii(phydev)) {
+ 		reg = phy_read(phydev,
+ 			MDIO_DEVAD_NONE, MIIM_88E1111_PHY_EXT_CR);
+ 		if ((phydev->interface == PHY_INTERFACE_MODE_RGMII) ||
+-- 
+2.7.4
+

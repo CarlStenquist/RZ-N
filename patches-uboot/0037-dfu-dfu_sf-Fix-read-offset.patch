@@ -1,0 +1,30 @@
+From a5c1eaa0eb4fcf52afd4f34e201156bb550ea494 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 14 Nov 2016 15:09:11 +0000
+Subject: [PATCH] dfu: dfu_sf: Fix read offset
+
+The offset was applied to write, but not read, now its applied to
+both.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/dfu/dfu_sf.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/dfu/dfu_sf.c b/drivers/dfu/dfu_sf.c
+index 9702eee..b6d5fe2 100644
+--- a/drivers/dfu/dfu_sf.c
++++ b/drivers/dfu/dfu_sf.c
+@@ -20,7 +20,8 @@ static long dfu_get_medium_size_sf(struct dfu_entity *dfu)
+ static int dfu_read_medium_sf(struct dfu_entity *dfu, u64 offset, void *buf,
+ 		long *len)
+ {
+-	return spi_flash_read(dfu->data.sf.dev, offset, *len, buf);
++	return spi_flash_read(dfu->data.sf.dev, dfu->data.sf.start + offset,
++		*len, buf);
+ }
+ 
+ static u64 find_sector(struct dfu_entity *dfu, u64 start, u64 offset)
+-- 
+2.7.4
+

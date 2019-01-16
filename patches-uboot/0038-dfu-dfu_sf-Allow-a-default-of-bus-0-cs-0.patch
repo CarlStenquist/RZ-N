@@ -1,0 +1,55 @@
+From 97bfa8c987f896a63eca9eb9cbcc44bb635020a5 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 4 Nov 2016 14:30:49 +0000
+Subject: [PATCH] dfu: dfu_sf: Allow a default of bus 0, cs 0
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/dfu/dfu_sf.c | 22 ++++++++++++++--------
+ 1 file changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/dfu/dfu_sf.c b/drivers/dfu/dfu_sf.c
+index b6d5fe2..628ce20 100644
+--- a/drivers/dfu/dfu_sf.c
++++ b/drivers/dfu/dfu_sf.c
+@@ -66,23 +66,29 @@ static void dfu_free_entity_sf(struct dfu_entity *dfu)
+ 
+ static struct spi_flash *parse_dev(char *devstr)
+ {
+-	unsigned int bus;
+-	unsigned int cs;
++	unsigned int bus = CONFIG_SF_DEFAULT_BUS;
++	unsigned int cs = CONFIG_SF_DEFAULT_CS;
+ 	unsigned int speed = CONFIG_SF_DEFAULT_SPEED;
+ 	unsigned int mode = CONFIG_SF_DEFAULT_MODE;
+ 	char *s, *endp;
+ 	struct spi_flash *dev;
+ 
+ 	s = strsep(&devstr, ":");
+-	if (!s || !*s || (bus = simple_strtoul(s, &endp, 0), *endp)) {
+-		printf("Invalid SPI bus %s\n", s);
+-		return NULL;
++	if (s && *s) {
++		bus = simple_strtoul(s, &endp, 0);
++		if (*endp) {
++			printf("Invalid SPI bus %s\n", s);
++			return NULL;
++		}
+ 	}
+ 
+ 	s = strsep(&devstr, ":");
+-	if (!s || !*s || (cs = simple_strtoul(s, &endp, 0), *endp)) {
+-		printf("Invalid SPI chip-select %s\n", s);
+-		return NULL;
++	if (s && *s) {
++		cs = simple_strtoul(s, &endp, 0);
++		if (*endp) {
++			printf("Invalid SPI chip-select %s\n", s);
++			return NULL;
++		}
+ 	}
+ 
+ 	s = strsep(&devstr, ":");
+-- 
+2.7.4
+

@@ -1,0 +1,33 @@
+From 18bdba7aca305ac6f58d4b40f5024e1dc6a3f4bf Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 4 Oct 2016 15:16:22 +0100
+Subject: [PATCH] net: designware: Reduce heap requirements
+
+There is no need to allocate 64KB per network interface for the Tx
+and Rx buffers, so we simply reduce the number of buffers used.
+
+This greatly helps to reduce heap fragmentation.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/net/designware.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/designware.h b/drivers/net/designware.h
+index 4b80d61..30f70f2 100644
+--- a/drivers/net/designware.h
++++ b/drivers/net/designware.h
+@@ -12,8 +12,8 @@
+ #include <asm-generic/gpio.h>
+ #endif
+ 
+-#define CONFIG_TX_DESCR_NUM	16
+-#define CONFIG_RX_DESCR_NUM	16
++#define CONFIG_TX_DESCR_NUM	2
++#define CONFIG_RX_DESCR_NUM	2
+ #define CONFIG_ETH_BUFSIZE	2048
+ #define TX_TOTAL_BUFSIZE	(CONFIG_ETH_BUFSIZE * CONFIG_TX_DESCR_NUM)
+ #define RX_TOTAL_BUFSIZE	(CONFIG_ETH_BUFSIZE * CONFIG_RX_DESCR_NUM)
+-- 
+2.7.4
+

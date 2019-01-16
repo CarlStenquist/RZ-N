@@ -1,0 +1,38 @@
+From 4f9c2eef918992b81f2fd053ef4e6e09030a4aed Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Tue, 5 May 2015 12:54:02 +0100
+Subject: [PATCH] dfu: dfu_nand: Calculate 'remaining' partition size
+
+If a partition size is zero, automatically fill it in with the
+'remaining' of the flash.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ drivers/dfu/dfu_nand.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/dfu/dfu_nand.c b/drivers/dfu/dfu_nand.c
+index 60d63f8..bd887e6 100644
+--- a/drivers/dfu/dfu_nand.c
++++ b/drivers/dfu/dfu_nand.c
+@@ -204,6 +204,17 @@ int dfu_fill_entity_nand(struct dfu_entity *dfu, char *devstr, char *s)
+ 		dfu->data.nand.start = simple_strtoul(s, &s, 16);
+ 		s++;
+ 		dfu->data.nand.size = simple_strtoul(s, &s, 16);
++		if (dfu->data.nand.size == 0) {
++			struct mtd_info *mtd = current_nand(nand_curr_device);
++
++			if (IS_ERR(mtd))
++				return -1;
++
++			mtd = nand_info[nand_curr_device];
++			dfu->data.nand.size = mtd->size - dfu->data.nand.start;
++			debug("DFU:%s calculated size is 0x%llx bytes\n",
++				dfu->name, dfu->data.nand.size);
++		}
+ 	} else if ((!strcmp(st, "part")) || (!strcmp(st, "partubi"))) {
+ 		char mtd_id[32];
+ 		struct mtd_device *mtd_dev;
+-- 
+2.7.4
+

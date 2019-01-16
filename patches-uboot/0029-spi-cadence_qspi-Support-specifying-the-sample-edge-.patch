@@ -1,0 +1,146 @@
+From 9ee9aa878e996f1521058eb2ce4011a02bdfa009 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 29 Nov 2016 12:28:50 +0000
+Subject: [PATCH] spi: cadence_qspi: Support specifying the sample edge used
+
+Introduce a new DT property to specify whether the QSPI Controller
+samples the data on a rising edge. The default is falling edge.
+Some versions of the QSPI Controller do not implement this bit, in
+which case the property should be omitted.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ v3:
+  - Patch split so this one only has code related to the subject.
+  - Commit message updated.
+ v2:
+  - Change name of DT prop and provide details of what it does.
+    Whilst at it, move the code to read the "sram-size" property
+    into the other code that reads properties from the node, rather
+    than the SF subnode.
+
+    Also change the code to use a bool for the bypass arg.
+---
+ doc/device-tree-bindings/spi/spi-cadence.txt |  2 ++
+ drivers/spi/cadence_qspi.c                   | 10 +++++++---
+ drivers/spi/cadence_qspi.h                   |  3 ++-
+ drivers/spi/cadence_qspi_apb.c               |  8 +++++++-
+ 4 files changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/doc/device-tree-bindings/spi/spi-cadence.txt b/doc/device-tree-bindings/spi/spi-cadence.txt
+index c1e2233..94c800b 100644
+--- a/doc/device-tree-bindings/spi/spi-cadence.txt
++++ b/doc/device-tree-bindings/spi/spi-cadence.txt
+@@ -26,3 +26,5 @@ connected flash properties
+ 			  select (n_ss_out).
+ - tslch-ns		: Delay in master reference clocks between setting
+ 			  n_ss_out low and first bit transfer
++- sample-edge-rising	: Data outputs from flash memory will be sampled on the
++			  rising edge. Default is falling edge.
+diff --git a/drivers/spi/cadence_qspi.c b/drivers/spi/cadence_qspi.c
+index 1c4ed33..6fa917d 100644
+--- a/drivers/spi/cadence_qspi.c
++++ b/drivers/spi/cadence_qspi.c
+@@ -39,8 +39,10 @@ static int cadence_spi_write_speed(struct udevice *bus, uint hz)
+ /* Calibration sequence to determine the read data capture delay register */
+ static int spi_calibration(struct udevice *bus, uint hz)
+ {
++	struct cadence_spi_platdata *plat = bus->platdata;
+ 	struct cadence_spi_priv *priv = dev_get_priv(bus);
+ 	void *base = priv->regbase;
++	bool edge = plat->sample_edge_rising;
+ 	u8 opcode_rdid = 0x9F;
+ 	unsigned int idcode = 0, temp = 0;
+ 	int err = 0, i, range_lo = -1, range_hi = -1;
+@@ -49,7 +51,7 @@ static int spi_calibration(struct udevice *bus, uint hz)
+ 	cadence_spi_write_speed(bus, 1000000);
+ 
+ 	/* configure the read data capture delay register to 0 */
+-	cadence_qspi_apb_readdata_capture(base, true, 0);
++	cadence_qspi_apb_readdata_capture(base, true, edge, 0);
+ 
+ 	/* Enable QSPI */
+ 	cadence_qspi_apb_controller_enable(base);
+@@ -69,7 +71,7 @@ static int spi_calibration(struct udevice *bus, uint hz)
+ 		cadence_qspi_apb_controller_disable(base);
+ 
+ 		/* reconfigure the read data capture delay register */
+-		cadence_qspi_apb_readdata_capture(base, true, i);
++		cadence_qspi_apb_readdata_capture(base, true, edge, i);
+ 
+ 		/* Enable back QSPI */
+ 		cadence_qspi_apb_controller_enable(base);
+@@ -105,7 +107,7 @@ static int spi_calibration(struct udevice *bus, uint hz)
+ 	cadence_qspi_apb_controller_disable(base);
+ 
+ 	/* configure the final value for read data capture delay register */
+-	cadence_qspi_apb_readdata_capture(base, true,
++	cadence_qspi_apb_readdata_capture(base, true, edge,
+ 		(range_hi + range_lo) / 2);
+ 	debug("SF: Read data capture delay calibrated to %i (%i - %i)\n",
+ 	      (range_hi + range_lo) / 2, range_lo, range_hi);
+@@ -317,6 +319,8 @@ static int cadence_spi_ofdata_to_platdata(struct udevice *bus)
+ 	plat->tsd2d_ns = fdtdec_get_int(blob, subnode, "tsd2d-ns", 255);
+ 	plat->tchsh_ns = fdtdec_get_int(blob, subnode, "tchsh-ns", 20);
+ 	plat->tslch_ns = fdtdec_get_int(blob, subnode, "tslch-ns", 20);
++	plat->sample_edge_rising = fdtdec_get_bool(blob, subnode,
++		"sample-edge-rising");
+ 
+ 	debug("%s: regbase=%p ahbbase=%p max-frequency=%d page-size=%d\n",
+ 	      __func__, plat->regbase, plat->ahbbase, plat->max_hz,
+diff --git a/drivers/spi/cadence_qspi.h b/drivers/spi/cadence_qspi.h
+index 50c6e7c..897e5f0 100644
+--- a/drivers/spi/cadence_qspi.h
++++ b/drivers/spi/cadence_qspi.h
+@@ -26,6 +26,7 @@ struct cadence_spi_platdata {
+ 	u32		tchsh_ns;
+ 	u32		tslch_ns;
+ 	u32		sram_size;
++	bool		sample_edge_rising;
+ };
+ 
+ struct cadence_spi_priv {
+@@ -72,6 +73,6 @@ void cadence_qspi_apb_delay(void *reg_base,
+ 	unsigned int tchsh_ns, unsigned int tslch_ns);
+ void cadence_qspi_apb_enter_xip(void *reg_base, char xip_dummy);
+ void cadence_qspi_apb_readdata_capture(void *reg_base,
+-	bool bypass, unsigned int delay);
++	bool bypass, bool edge, unsigned int delay);
+ 
+ #endif /* __CADENCE_QSPI_H__ */
+diff --git a/drivers/spi/cadence_qspi_apb.c b/drivers/spi/cadence_qspi_apb.c
+index ec4c979..9c317b8 100644
+--- a/drivers/spi/cadence_qspi_apb.c
++++ b/drivers/spi/cadence_qspi_apb.c
+@@ -99,6 +99,7 @@
+ #define	CQSPI_REG_RD_DATA_CAPTURE_BYPASS	BIT(0)
+ #define	CQSPI_REG_RD_DATA_CAPTURE_DELAY_LSB	1
+ #define	CQSPI_REG_RD_DATA_CAPTURE_DELAY_MASK	0xF
++#define	CQSPI_REG_RD_DATA_CAPTURE_EDGE		BIT(5)
+ 
+ #define	CQSPI_REG_SIZE				0x14
+ #define	CQSPI_REG_SIZE_ADDRESS_LSB		0
+@@ -235,7 +236,7 @@ static unsigned int cadence_qspi_wait_idle(void *reg_base)
+ }
+ 
+ void cadence_qspi_apb_readdata_capture(void *reg_base,
+-	bool bypass, unsigned int delay)
++	bool bypass, bool edge, unsigned int delay)
+ {
+ 	unsigned int reg;
+ 	cadence_qspi_apb_controller_disable(reg_base);
+@@ -247,6 +248,11 @@ void cadence_qspi_apb_readdata_capture(void *reg_base,
+ 	else
+ 		reg &= ~CQSPI_REG_RD_DATA_CAPTURE_BYPASS;
+ 
++	if (edge)
++		reg |= CQSPI_REG_RD_DATA_CAPTURE_EDGE;
++	else
++		reg &= ~CQSPI_REG_RD_DATA_CAPTURE_EDGE;
++
+ 	reg &= ~(CQSPI_REG_RD_DATA_CAPTURE_DELAY_MASK
+ 		<< CQSPI_REG_RD_DATA_CAPTURE_DELAY_LSB);
+ 
+-- 
+2.7.4
+

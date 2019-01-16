@@ -1,0 +1,57 @@
+From 081a5a3c3b1fcc3f9348d33efe40aa58e5a3fd02 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 10 Mar 2015 12:15:26 +0000
+Subject: [PATCH] ARM: SPL: Allow SPL to use ARM optimised memcpy and memset
+
+The motivation for memcpy is to speed up loading image from a memory
+mapped QSPI device to DDR.
+The motivation for memset is to speed up initialising DDR when using
+a DDR controller that supports ECC.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/Kconfig      | 8 ++++++++
+ arch/arm/lib/Makefile | 4 ++--
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 0ed36cd..2b2ec28 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -144,6 +144,14 @@ config USE_ARCH_MEMSET
+ 	  Such implementation may be faster under some conditions
+ 	  but may increase the binary size.
+ 
++config SPL_USE_ARCH_MEMCPY
++	bool "Use an assembly optimized implementation of memcpy for SPL"
++	default n
++
++config SPL_USE_ARCH_MEMSET
++	bool "Use an assembly optimized implementation of memcset for SPL"
++	default n
++
+ config ARCH_OMAP2
+ 	bool
+ 	select CPU_V7
+diff --git a/arch/arm/lib/Makefile b/arch/arm/lib/Makefile
+index 0051f76..ee07b65 100644
+--- a/arch/arm/lib/Makefile
++++ b/arch/arm/lib/Makefile
+@@ -30,12 +30,12 @@ obj-$(CONFIG_CMD_BOOTI) += bootm.o
+ obj-$(CONFIG_CMD_BOOTM) += bootm.o
+ obj-$(CONFIG_CMD_BOOTZ) += bootm.o zimage.o
+ obj-$(CONFIG_SYS_L2_PL310) += cache-pl310.o
+-obj-$(CONFIG_USE_ARCH_MEMSET) += memset.o
+-obj-$(CONFIG_USE_ARCH_MEMCPY) += memcpy.o
+ else
+ obj-$(CONFIG_SPL_FRAMEWORK) += spl.o
+ obj-$(CONFIG_SPL_FRAMEWORK) += zimage.o
+ endif
++obj-$(CONFIG_$(SPL_)USE_ARCH_MEMSET) += memset.o
++obj-$(CONFIG_$(SPL_)USE_ARCH_MEMCPY) += memcpy.o
+ obj-$(CONFIG_SEMIHOSTING) += semihosting.o
+ 
+ obj-y	+= sections.o
+-- 
+2.7.4
+

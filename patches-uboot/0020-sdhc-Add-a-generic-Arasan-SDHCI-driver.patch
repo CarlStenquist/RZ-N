@@ -1,0 +1,142 @@
+From ffef59e5a9908d3102e028d39b9bdeb64e09308c Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 5 Oct 2016 17:45:33 +0100
+Subject: [PATCH] sdhc: Add a generic Arasan SDHCI driver
+
+Zynq, Rockwell and other devices use the Arasan IP, so lets have a
+single driver for them all.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/mmc/Kconfig          |  6 ++++
+ drivers/mmc/Makefile         |  1 +
+ drivers/mmc/arasan_sdhci.c   | 75 ++++++++++++++++++++++++++++++++++++++++++++
+ scripts/config_whitelist.txt |  1 +
+ 4 files changed, 83 insertions(+)
+ create mode 100644 drivers/mmc/arasan_sdhci.c
+
+diff --git a/drivers/mmc/Kconfig b/drivers/mmc/Kconfig
+index c3462ab..e92069c 100644
+--- a/drivers/mmc/Kconfig
++++ b/drivers/mmc/Kconfig
+@@ -57,6 +57,12 @@ config MSM_SDHCI
+           SD 3.0 specifications. Both SD and eMMC devices are supported.
+ 	  Card-detect gpios are not supported.
+ 
++config ARASAN_SDHCI
++	bool "Arasan Generic SDHCI controller support"
++	depends on DM_MMC && OF_CONTROL
++	help
++	  Support for Arasan SDHCI host controller on all platforms
++
+ config ATMEL_SDHCI
+ 	bool "Atmel SDHCI controller support"
+ 	depends on DM_MMC && BLK && DM_MMC_OPS && ARCH_AT91
+diff --git a/drivers/mmc/Makefile b/drivers/mmc/Makefile
+index 2b136ea..204351c 100644
+--- a/drivers/mmc/Makefile
++++ b/drivers/mmc/Makefile
+@@ -13,6 +13,7 @@ ifndef CONFIG_BLK
+ obj-$(CONFIG_GENERIC_MMC) += mmc_legacy.o
+ endif
+ 
++obj-$(CONFIG_ARASAN_SDHCI) += arasan_sdhci.o
+ obj-$(CONFIG_ARM_PL180_MMCI) += arm_pl180_mmci.o
+ obj-$(CONFIG_ATMEL_SDHCI) += atmel_sdhci.o
+ obj-$(CONFIG_BFIN_SDH) += bfin_sdh.o
+diff --git a/drivers/mmc/arasan_sdhci.c b/drivers/mmc/arasan_sdhci.c
+new file mode 100644
+index 0000000..20b06c1
+--- /dev/null
++++ b/drivers/mmc/arasan_sdhci.c
+@@ -0,0 +1,75 @@
++/*
++ * Generic Arasan SD Host Controller Interface
++ *
++ * Based on:
++ * Xilinx Zynq SD Host Controller Interface
++ * (C) Copyright 2013 - 2015 Xilinx, Inc.
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <dm.h>
++#include <fdtdec.h>
++#include <libfdt.h>
++#include <malloc.h>
++#include <sdhci.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++static int arasan_sdhci_probe(struct udevice *dev)
++{
++	struct mmc_uclass_priv *upriv = dev_get_uclass_priv(dev);
++	struct sdhci_host *host = dev_get_priv(dev);
++	const void *fdt = gd->fdt_blob;
++	int node = dev->of_offset;
++	int max_freq;
++
++	host->bus_width	= fdtdec_get_int(fdt, node, "bus-width", 4);
++
++	/*
++	 * When we call sdhci_setup_cfg with a max_freq of 0, the SDHC code will
++	 * attempt to get it from the SDHC registers.
++	 */
++	max_freq = fdtdec_get_int(fdt, node, "max-frequency", 0);
++
++	if (fdtdec_get_bool(fdt, node, "no-1-8-v")) {
++		host->quirks = SDHCI_QUIRK_BROKEN_VOLTAGE;
++		host->voltages = MMC_VDD_32_33 | MMC_VDD_33_34;
++	}
++
++#ifdef CONFIG_SDHCI_ARASAN_QUIRKS
++	host->quirks |= CONFIG_SDHCI_ARASAN_QUIRKS;
++#endif
++
++	add_sdhci(host, max_freq, 0);
++
++	upriv->mmc = host->mmc;
++	host->mmc->dev = dev;
++
++	return 0;
++}
++
++static int arasan_sdhci_ofdata_to_platdata(struct udevice *dev)
++{
++	struct sdhci_host *host = dev_get_priv(dev);
++
++	host->name = dev->name;
++	host->ioaddr = (void *)dev_get_addr(dev);
++
++	return 0;
++}
++
++static const struct udevice_id arasan_sdhci_ids[] = {
++	{ .compatible = "arasan,sdhci-8.9a" },
++	{ }
++};
++
++U_BOOT_DRIVER(arasan_sdhci_drv) = {
++	.name		= "arasan_sdhci",
++	.id		= UCLASS_MMC,
++	.of_match	= arasan_sdhci_ids,
++	.ofdata_to_platdata = arasan_sdhci_ofdata_to_platdata,
++	.probe		= arasan_sdhci_probe,
++	.priv_auto_alloc_size = sizeof(struct sdhci_host),
++};
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index d5f5352..0bfd1c4 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -3820,6 +3820,7 @@ CONFIG_SCSI_DEV_LIST
+ CONFIG_SCSI_SYM53C8XX
+ CONFIG_SC_TIMER_CLK
+ CONFIG_SDCARD
++CONFIG_SDHCI_ARASAN_QUIRKS
+ CONFIG_SDRAM_BANK0
+ CONFIG_SDRAM_BANK1
+ CONFIG_SDRAM_ECC
+-- 
+2.7.4
+

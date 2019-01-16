@@ -1,0 +1,59 @@
+From fe7010212c56b4e1abf232db4bbfc20245066147 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 4 Oct 2016 15:58:32 +0100
+Subject: [PATCH] net: dw: Call PHY link notifier function
+
+This allows us to setup other IP between the GMAC and the PHY that
+needs to know about the link details.
+
+This is needed on Renesas RZ/N1 devices as the RGMII/GMII Converter and
+5-port switch needs to be setup with the correct speed and duplex used.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/net/designware.c | 9 +++++++++
+ include/netdev.h         | 1 +
+ 2 files changed, 10 insertions(+)
+
+diff --git a/drivers/net/designware.c b/drivers/net/designware.c
+index 9e6d726..3a5a298 100644
+--- a/drivers/net/designware.c
++++ b/drivers/net/designware.c
+@@ -269,6 +269,12 @@ static void _dw_eth_halt(struct dw_eth_dev *priv)
+ 	phy_shutdown(priv->phydev);
+ }
+ 
++int __attribute__((weak)) phy_adjust_link_notifier(struct phy_device *phydev)
++{
++	/* nothing to do here */
++	return 0;
++}
++
+ static int _dw_eth_init(struct dw_eth_dev *priv, u8 *enetaddr)
+ {
+ 	struct eth_mac_regs *mac_p = priv->mac_regs_p;
+@@ -326,6 +332,9 @@ static int _dw_eth_init(struct dw_eth_dev *priv, u8 *enetaddr)
+ 	if (!priv->phydev->link)
+ 		return -EIO;
+ 
++	if (phy_adjust_link_notifier(priv->phydev) < 0)
++		return -1;
++
+ 	writel(readl(&mac_p->conf) | RXENABLE | TXENABLE, &mac_p->conf);
+ 
+ 	return 0;
+diff --git a/include/netdev.h b/include/netdev.h
+index 7a211bc..028672e 100644
+--- a/include/netdev.h
++++ b/include/netdev.h
+@@ -35,6 +35,7 @@ int cs8900_initialize(u8 dev_num, int base_addr);
+ int davinci_emac_initialize(void);
+ int dc21x4x_initialize(bd_t *bis);
+ int designware_initialize(ulong base_addr, u32 interface);
++int phy_adjust_link_notifier(struct phy_device *phydev);
+ int dm9000_initialize(bd_t *bis);
+ int dnet_eth_initialize(int id, void *regs, unsigned int phy_addr);
+ int e1000_initialize(bd_t *bis);
+-- 
+2.7.4
+

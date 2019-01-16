@@ -1,0 +1,37 @@
+From 66b52af492d7598e471fbb7a1007a177b73d4131 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 25 Nov 2016 09:45:49 +0000
+Subject: [PATCH] spl: spi: Replace hardcoded header size with sizeof
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/spl/spl_spi.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/common/spl/spl_spi.c b/common/spl/spl_spi.c
+index cd1d6b2..151d1b6 100644
+--- a/common/spl/spl_spi.c
++++ b/common/spl/spl_spi.c
+@@ -27,7 +27,7 @@ static int spi_load_image_os(struct spl_image_info *spl_image,
+ 	int err;
+ 
+ 	/* Read for a header, parse or error out. */
+-	spi_flash_read(flash, CONFIG_SYS_SPI_KERNEL_OFFS, 0x40,
++	spi_flash_read(flash, CONFIG_SYS_SPI_KERNEL_OFFS, sizeof(*header),
+ 		       (void *)header);
+ 
+ 	if (image_get_magic(header) != IH_MAGIC)
+@@ -94,8 +94,8 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
+ #endif
+ 	{
+ 		/* Load u-boot, mkimage header is 64 bytes. */
+-		err = spi_flash_read(flash, CONFIG_SYS_SPI_U_BOOT_OFFS, 0x40,
+-				     (void *)header);
++		err = spi_flash_read(flash, CONFIG_SYS_SPI_U_BOOT_OFFS,
++				     sizeof(*header), (void *)header);
+ 		if (err)
+ 			return err;
+ 
+-- 
+2.7.4
+

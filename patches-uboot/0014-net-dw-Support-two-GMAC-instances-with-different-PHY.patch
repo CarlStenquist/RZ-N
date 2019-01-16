@@ -1,0 +1,34 @@
+From a0a946f6705430b3887628adc8d6ee4a046791c0 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 5 Oct 2016 19:10:37 +0100
+Subject: [PATCH] net: dw: Support two GMAC instances with different PHY
+ addresses
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/net/designware.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/net/designware.c b/drivers/net/designware.c
+index 3a5a298..e2c90dc 100644
+--- a/drivers/net/designware.c
++++ b/drivers/net/designware.c
+@@ -466,6 +466,15 @@ static int dw_phy_init(struct dw_eth_dev *priv, void *dev)
+ 	mask = 1 << CONFIG_PHY_ADDR;
+ #endif
+ 
++#ifndef CONFIG_DM_ETH
++	struct eth_device *edev = (struct eth_device *)dev;
++
++#ifdef CONFIG_PHY1_ADDR
++	if (edev->index == 1)
++		mask = 1 << CONFIG_PHY1_ADDR;
++#endif
++#endif
++
+ 	phydev = phy_find_by_mask(priv->bus, mask, priv->interface);
+ 	if (!phydev)
+ 		return -ENODEV;
+-- 
+2.7.4
+

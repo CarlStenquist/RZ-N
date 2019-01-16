@@ -1,0 +1,77 @@
+From a366e655e60b0346bd69645aebba620992c91545 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 29 Nov 2016 12:27:04 +0000
+Subject: [PATCH] spi: cadence_qspi: Change readdata_capture() arg to bool
+
+This is in preparation for adding another arg.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ v3:
+  - New patch to split changes.
+---
+ drivers/spi/cadence_qspi.c     | 7 ++++---
+ drivers/spi/cadence_qspi.h     | 2 +-
+ drivers/spi/cadence_qspi_apb.c | 2 +-
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/spi/cadence_qspi.c b/drivers/spi/cadence_qspi.c
+index f16f90d..1c4ed33 100644
+--- a/drivers/spi/cadence_qspi.c
++++ b/drivers/spi/cadence_qspi.c
+@@ -49,7 +49,7 @@ static int spi_calibration(struct udevice *bus, uint hz)
+ 	cadence_spi_write_speed(bus, 1000000);
+ 
+ 	/* configure the read data capture delay register to 0 */
+-	cadence_qspi_apb_readdata_capture(base, 1, 0);
++	cadence_qspi_apb_readdata_capture(base, true, 0);
+ 
+ 	/* Enable QSPI */
+ 	cadence_qspi_apb_controller_enable(base);
+@@ -69,7 +69,7 @@ static int spi_calibration(struct udevice *bus, uint hz)
+ 		cadence_qspi_apb_controller_disable(base);
+ 
+ 		/* reconfigure the read data capture delay register */
+-		cadence_qspi_apb_readdata_capture(base, 1, i);
++		cadence_qspi_apb_readdata_capture(base, true, i);
+ 
+ 		/* Enable back QSPI */
+ 		cadence_qspi_apb_controller_enable(base);
+@@ -105,7 +105,8 @@ static int spi_calibration(struct udevice *bus, uint hz)
+ 	cadence_qspi_apb_controller_disable(base);
+ 
+ 	/* configure the final value for read data capture delay register */
+-	cadence_qspi_apb_readdata_capture(base, 1, (range_hi + range_lo) / 2);
++	cadence_qspi_apb_readdata_capture(base, true,
++		(range_hi + range_lo) / 2);
+ 	debug("SF: Read data capture delay calibrated to %i (%i - %i)\n",
+ 	      (range_hi + range_lo) / 2, range_lo, range_hi);
+ 
+diff --git a/drivers/spi/cadence_qspi.h b/drivers/spi/cadence_qspi.h
+index d1927a4..50c6e7c 100644
+--- a/drivers/spi/cadence_qspi.h
++++ b/drivers/spi/cadence_qspi.h
+@@ -72,6 +72,6 @@ void cadence_qspi_apb_delay(void *reg_base,
+ 	unsigned int tchsh_ns, unsigned int tslch_ns);
+ void cadence_qspi_apb_enter_xip(void *reg_base, char xip_dummy);
+ void cadence_qspi_apb_readdata_capture(void *reg_base,
+-	unsigned int bypass, unsigned int delay);
++	bool bypass, unsigned int delay);
+ 
+ #endif /* __CADENCE_QSPI_H__ */
+diff --git a/drivers/spi/cadence_qspi_apb.c b/drivers/spi/cadence_qspi_apb.c
+index e02f221..ec4c979 100644
+--- a/drivers/spi/cadence_qspi_apb.c
++++ b/drivers/spi/cadence_qspi_apb.c
+@@ -235,7 +235,7 @@ static unsigned int cadence_qspi_wait_idle(void *reg_base)
+ }
+ 
+ void cadence_qspi_apb_readdata_capture(void *reg_base,
+-				unsigned int bypass, unsigned int delay)
++	bool bypass, unsigned int delay)
+ {
+ 	unsigned int reg;
+ 	cadence_qspi_apb_controller_disable(reg_base);
+-- 
+2.7.4
+

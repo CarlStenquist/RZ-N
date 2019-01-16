@@ -1,0 +1,31 @@
+From bc5a05407f6535aff21fd69deb058f6937daeedd Mon Sep 17 00:00:00 2001
+From: Felipe Balbi <felipe.balbi@linux.intel.com>
+Date: Fri, 10 Feb 2017 19:32:31 +0300
+Subject: [PATCH] usb: gadget: f_dfu: write req->actual bytes
+
+If last packet is short, we shouldn't write req->length bytes to
+non-volatile media, we should write only what's available to us, which
+is held in req->actual.
+
+Signed-off-by: Felipe Balbi <felipe.balbi@linux.intel.com>
+Signed-off-by: Andy Shevchenko <andriy.shevchenko@linux.intel.com>
+---
+ drivers/usb/gadget/f_dfu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/usb/gadget/f_dfu.c b/drivers/usb/gadget/f_dfu.c
+index ea0661f..961db86 100644
+--- a/drivers/usb/gadget/f_dfu.c
++++ b/drivers/usb/gadget/f_dfu.c
+@@ -159,7 +159,7 @@ static void dnload_request_complete(struct usb_ep *ep, struct usb_request *req)
+ 	int ret;
+ 
+ 	ret = dfu_write(dfu_get_entity(f_dfu->altsetting), req->buf,
+-			req->length, f_dfu->blk_seq_num);
++			req->actual, f_dfu->blk_seq_num);
+ 	if (ret) {
+ 		f_dfu->dfu_status = DFU_STATUS_errUNKNOWN;
+ 		f_dfu->dfu_state = DFU_STATE_dfuERROR;
+-- 
+2.7.4
+

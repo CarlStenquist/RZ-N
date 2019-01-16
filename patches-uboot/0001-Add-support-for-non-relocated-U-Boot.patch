@@ -1,0 +1,187 @@
+From 88cd3b2f36d4d98c6ca926e325620386e63d955a Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Mon, 7 Nov 2016 16:39:33 +0000
+Subject: [PATCH] Add support for non-relocated U-Boot
+
+U-Boot traditionally relocates itself to the top of SDRAM as it is assumed
+that U-Boot is initially run from a read-only memory, or a very small memory
+that is not big enough for all the data placed on the heap.
+
+However, some devices have a reasonable amount of on-chip SRAM, and U-Boot
+is loaded into this SRAM by a BootROM. Since the size of the on-chip SRAM
+is not huge, we need to save whatever memory we can, so this change allows
+U-Boot to run without performing a relocation.
+
+An additional benefit is that it's easier to debug U-Boot as the TEXTBASE
+does not change.
+
+This patch introduces the following symbol:
+  CONFIG_SYS_STAY_IN_SRAM
+It requires the board to define:
+  CONFIG_SYS_SRAM_BASE
+  CONFIG_SYS_SRAM_SIZE
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/board_f.c                  | 24 ++++++++++++++++++++++--
+ common/board_r.c                  |  7 +++++++
+ common/bootm.c                    |  2 ++
+ include/asm-generic/global_data.h |  5 +++++
+ scripts/config_whitelist.txt      |  1 +
+ 5 files changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/common/board_f.c b/common/board_f.c
+index cc8aee7..175c6ba 100644
+--- a/common/board_f.c
++++ b/common/board_f.c
+@@ -361,11 +361,15 @@ static int setup_dest_addr(void)
+ 	 */
+ 	gd->ram_size = board_reserve_ram_top(gd->ram_size);
+ 
++#ifdef CONFIG_SYS_STAY_IN_SRAM
++	gd->ram_top = CONFIG_SYS_SRAM_BASE + CONFIG_SYS_SRAM_SIZE;
++#else
+ #ifdef CONFIG_SYS_SDRAM_BASE
+ 	gd->ram_top = CONFIG_SYS_SDRAM_BASE;
+ #endif
+ 	gd->ram_top += get_effective_memsize();
+ 	gd->ram_top = board_get_usable_ram_top(gd->mon_len);
++#endif /* CONFIG_SYS_STAY_IN_SRAM */
+ 	gd->relocaddr = gd->ram_top;
+ 	debug("Ram top: %08lX\n", (ulong)gd->ram_top);
+ #if defined(CONFIG_MP) && (defined(CONFIG_MPC86xx) || defined(CONFIG_E500))
+@@ -513,6 +517,9 @@ static int reserve_trace(void)
+ 
+ static int reserve_uboot(void)
+ {
++#ifdef CONFIG_SYS_STAY_IN_SRAM
++	debug("Skipping u-boot relocate\n");
++#else
+ 	/*
+ 	 * reserve memory for U-Boot code, data & bss
+ 	 * round down to next 4 kB limit
+@@ -526,6 +533,7 @@ static int reserve_uboot(void)
+ 
+ 	debug("Reserving %ldk for U-Boot at: %08lx\n", gd->mon_len >> 10,
+ 	      gd->relocaddr);
++#endif
+ 
+ 	gd->start_addr_sp = gd->relocaddr;
+ 
+@@ -537,6 +545,10 @@ static int reserve_uboot(void)
+ static int reserve_malloc(void)
+ {
+ 	gd->start_addr_sp = gd->start_addr_sp - TOTAL_MALLOC_LEN;
++#ifdef CONFIG_SYS_STAY_IN_SRAM
++	gd->malloc_pool_addr = gd->start_addr_sp;
++	debug("malloc pool at: %08lx\n", gd->malloc_pool_addr);
++#endif
+ 	debug("Reserving %dk for malloc() at: %08lx\n",
+ 			TOTAL_MALLOC_LEN >> 10, gd->start_addr_sp);
+ 	return 0;
+@@ -742,6 +754,13 @@ static int reloc_fdt(void)
+ 
+ static int setup_reloc(void)
+ {
++#ifdef CONFIG_SYS_STAY_IN_SRAM
++	extern char __image_copy_start[];
++	debug("Skipped relocation to %lx\n", (ulong)__image_copy_start);
++	gd->relocaddr = CONFIG_SYS_TEXT_BASE;
++	debug("Free ram between u-boot and stack: %ld\n",
++		gd->start_addr_sp - gd->relocaddr + gd->mon_len);
++#else
+ 	if (gd->flags & GD_FLG_SKIP_RELOC) {
+ 		debug("Skipping relocation due to flag\n");
+ 		return 0;
+@@ -757,9 +776,10 @@ static int setup_reloc(void)
+ 	gd->reloc_off = gd->relocaddr - (CONFIG_SYS_TEXT_BASE + 0x400);
+ #endif
+ #endif
++	debug("Relocation Offset is: %08lx\n", gd->reloc_off);
++#endif
+ 	memcpy(gd->new_gd, (char *)gd, sizeof(gd_t));
+ 
+-	debug("Relocation Offset is: %08lx\n", gd->reloc_off);
+ 	debug("Relocating to %08lx, new gd at %08lx, sp at %08lx\n",
+ 	      gd->relocaddr, (ulong)map_to_sysmem(gd->new_gd),
+ 	      gd->start_addr_sp);
+@@ -768,7 +788,7 @@ static int setup_reloc(void)
+ }
+ 
+ /* ARM calls relocate_code from its crt0.S */
+-#if !defined(CONFIG_ARM) && !defined(CONFIG_SANDBOX)
++#if !defined(CONFIG_ARM) && !defined(CONFIG_SANDBOX) && !defined(CONFIG_SYS_STAY_IN_SRAM)
+ 
+ static int jump_to_copy(void)
+ {
+diff --git a/common/board_r.c b/common/board_r.c
+index a373352..eb2df64 100644
+--- a/common/board_r.c
++++ b/common/board_r.c
+@@ -286,12 +286,19 @@ static int initr_malloc(void)
+ {
+ 	ulong malloc_start;
+ 
++#ifdef CONFIG_SYS_STAY_IN_SRAM
++	/* In the case we do not relocate u-boot code, we can't just
++	 * plonk an address from thin air, we use the one that has been
++	 * calculated with the other bits at the top of memory */
++	malloc_start = gd->malloc_pool_addr;
++#else
+ #ifdef CONFIG_SYS_MALLOC_F_LEN
+ 	debug("Pre-reloc malloc() used %#lx bytes (%ld KB)\n", gd->malloc_ptr,
+ 	      gd->malloc_ptr / 1024);
+ #endif
+ 	/* The malloc area is immediately below the monitor copy in DRAM */
+ 	malloc_start = gd->relocaddr - TOTAL_MALLOC_LEN;
++#endif
+ 	mem_malloc_init((ulong)map_sysmem(malloc_start, TOTAL_MALLOC_LEN),
+ 			TOTAL_MALLOC_LEN);
+ 	return 0;
+diff --git a/common/bootm.c b/common/bootm.c
+index b2c0912..8b4ccb9 100644
+--- a/common/bootm.c
++++ b/common/bootm.c
+@@ -60,8 +60,10 @@ static void boot_start_lmb(bootm_headers_t *images)
+ 
+ 	lmb_add(&images->lmb, (phys_addr_t)mem_start, mem_size);
+ 
++#if !defined(CONFIG_SYS_STAY_IN_SRAM)
+ 	arch_lmb_reserve(&images->lmb);
+ 	board_lmb_reserve(&images->lmb);
++#endif
+ }
+ #else
+ #define lmb_reserve(lmb, base, size)
+diff --git a/include/asm-generic/global_data.h b/include/asm-generic/global_data.h
+index e02863d..7a3b8e1 100644
+--- a/include/asm-generic/global_data.h
++++ b/include/asm-generic/global_data.h
+@@ -59,6 +59,11 @@ typedef struct global_data {
+ 	unsigned long start_addr_sp;	/* start_addr_stackpointer */
+ 	unsigned long reloc_off;
+ 	struct global_data *new_gd;	/* relocated global data */
++#ifdef CONFIG_SYS_STAY_IN_SRAM
++	/* if we don't relocate uboot, we cannot hardcode the malloc
++	 * pool to be under the uboot code, it's silly */
++	unsigned long malloc_pool_addr;
++#endif
+ 
+ #ifdef CONFIG_DM
+ 	struct udevice	*dm_root;	/* Root instance for Driver Model */
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index 00ee3f1..da2a5d5 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -7393,6 +7393,7 @@ CONFIG_SYS_STACK_LENGTH
+ CONFIG_SYS_STACK_SIZE
+ CONFIG_SYS_STATUS_C
+ CONFIG_SYS_STATUS_OK
++CONFIG_SYS_STAY_IN_SRAM
+ CONFIG_SYS_STMICRO_BOOT
+ CONFIG_SYS_SUPPORT_64BIT_DATA
+ CONFIG_SYS_SXCNFG_VAL
+-- 
+2.7.4
+

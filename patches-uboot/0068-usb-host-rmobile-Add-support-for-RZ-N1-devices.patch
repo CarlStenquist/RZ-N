@@ -1,0 +1,162 @@
+From 00da9303f95d898ed55ac39d4c662e4ced796984 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 3 Apr 2017 06:48:35 +0100
+Subject: [PATCH] usb: host: rmobile: Add support for RZ/N1 devices
+
+Other than using a different base address and different clock enable
+code, the RZ/N1 needs the OHCI roothub to be always powered on.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/usb/host/ehci-rmobile.c | 67 +++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 61 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/usb/host/ehci-rmobile.c b/drivers/usb/host/ehci-rmobile.c
+index 11f7c1c..3b29a00 100644
+--- a/drivers/usb/host/ehci-rmobile.c
++++ b/drivers/usb/host/ehci-rmobile.c
+@@ -9,6 +9,7 @@
+ 
+ #include <common.h>
+ #include <asm/io.h>
++#include "ohci.h"
+ #include "ehci.h"
+ #include "ehci-rmobile.h"
+ #include <pci.h>
+@@ -29,10 +30,33 @@ static u32 usb_base_address[] = {
+ 	0xEE080000,	/* USB0 (EHCI) */
+ 	0xEE0C0000,	/* USB1 */
+ };
++#elif defined(CONFIG_ARCH_RZN1)
++static u32 usb_base_address[] = {
++	0x40020000,	/* USB0 (EHCI) */
++};
+ #else
+ #error rmobile EHCI USB driver not supported on this platform
+ #endif
+ 
++#if !defined(CONFIG_ARCH_RZN1)
++static u32 win_address[] = {
++	CONFIG_SYS_SDRAM_BASE,	/* DDR */
++};
++#else
++/*
++ * RZ/N1 is typically configured to stay in SRAM as RZ/N1S doesn't support DDR.
++ * However, the default configuration means that the USB Host controller needs
++ * to access both SRAMs (at 0x0400000 and 0x20000000). In order to cover both
++ * of these and provide access to DDR, the large configurable PCI-AHB window is
++ * set to address 0, 1GB, and the second PCI-AHB window (fixed 256MB) is set to
++ * cover DDR. However, this means U-Boot cannot access more than 256MB DDR.
++ */
++static u32 win_address[] = {
++	0x04000000,	/* SRAM, the win will also cover SRAM at 0x20000000 */
++	0x80000000,	/* DDR, or another SRAM on RZ/N1S, win is only 256MB */
++};
++#endif
++
+ #define EHCI_USBCMD_OFF		0x20
+ #define EHCI_USBCMD_HCRESET	(1 << 1)
+ 
+@@ -58,9 +82,11 @@ int ehci_hcd_stop(int index)
+ 	if (!i)
+ 		printf("error : ehci(%d) reset failed.\n", index);
+ 
++#if !defined(CONFIG_ARCH_RZN1)
+ 	/* Turn off IP clock */
+ 	if (index == (ARRAY_SIZE(usb_base_address) - 1))
+ 		setbits_le32(SMSTPCR7, SMSTPCR703);
++#endif
+ 
+ 	return 0;
+ }
+@@ -107,19 +133,28 @@ static void pci_writew_fn(u32 reg, int devfn, u16 val, u32 addr)
+ int ehci_hcd_init(int index, enum usb_init_type init,
+ 	struct ehci_hccr **hccr, struct ehci_hcor **hcor)
+ {
+-	u32 base, reg;
++	u32 reg;
++	struct ohci_regs *rohci;
+ 	struct rmobile_ehci_reg *rehci;
+ 	uint32_t cap_base;
+ 	u32 val;
+-	/* The mask applied to the window addr depends on the window size */
+-	u32 win1_addr = CONFIG_SYS_SDRAM_BASE & 0xc0000000;
+-	base = usb_base_address[index];
++	int use_win2_addr = 0;
++	u32 base = usb_base_address[index];
++
++	win_address[0] &= 0xc0000000;	/* mask for 1GB window */
++	if (sizeof(win_address) > sizeof(win_address[0])) {
++		win_address[1] &= 0xf0000000;	/* mask for 256MB window */
++		use_win2_addr = 1;
++	}
+ 
++#if !defined(CONFIG_ARCH_RZN1)
+ 	/* Turn on IP clock */
+ 	if (index == 0)
+ 		clrbits_le32(SMSTPCR7, SMSTPCR703);
++#endif
+ 
+ 	reg = base + PCI_CONF_AHBPCI_OFFSET;
++	rohci = (struct ohci_regs *)(base + OHCI_OFFSET);
+ 	rehci = (struct rmobile_ehci_reg *)(base + EHCI_OFFSET);
+ 
+ 	/* Disable Direct Power Down State and assert reset */
+@@ -133,6 +168,8 @@ int ehci_hcd_init(int index, enum usb_init_type init,
+ 	val &= ~(RCAR_USBCTR_PCIAHB_WIN1_MASK | RCAR_USBCTR_PCICLK_MASK |
+ 		 RCAR_USBCTR_USBH_RST | RCAR_USBCTR_PLL_RST);
+ 	val |= RCAR_USBCTR_PCIAHB_WIN1_1G;
++	if (use_win2_addr)
++		val |= RCAR_USBCTR_PCIAHB_WIN2_EN;
+ 	writel(val, reg + RCAR_USBCTR_REG);
+ 	udelay(100);
+ 
+@@ -146,9 +183,13 @@ int ehci_hcd_init(int index, enum usb_init_type init,
+ 	writel(val, reg + RCAR_PCI_ARBITER_CTR_REG);
+ 
+ 	/* PCI-AHB mapping */
+-	writel(win1_addr | RCAR_PCIAHB_PREFETCH16,
++	writel(win_address[0] | RCAR_PCIAHB_PREFETCH16,
+ 		  reg + RCAR_PCIAHB_WIN1_CTR_REG);
+ 
++	if (use_win2_addr)
++		writel(win_address[1] | RCAR_PCIAHB_PREFETCH16,
++			reg + RCAR_PCIAHB_WIN2_CTR_REG);
++
+ 	/* AHB-PCI mapping: OHCI/EHCI registers */
+ 	val = base | RCAR_AHBPCI_WIN_CTR_MEM;
+ 	writel(val, reg + RCAR_AHBPCI_WIN2_CTR_REG);
+@@ -161,9 +202,14 @@ int ehci_hcd_init(int index, enum usb_init_type init,
+ 	pci_writel_fn(reg, 0, val, PCI_BASE_ADDRESS_0);
+ 
+ 	/* Set PCI-AHB Window1 address */
+-	val = win1_addr | PCI_BASE_ADDRESS_MEM_PREFETCH;
++	val = win_address[0] | PCI_BASE_ADDRESS_MEM_PREFETCH;
+ 	pci_writel_fn(reg, 0, val, PCI_BASE_ADDRESS_1);
+ 
++	if (use_win2_addr) {
++		val = win_address[1] | PCI_BASE_ADDRESS_MEM_PREFETCH;
++		pci_writel_fn(reg, 0, val, PCI_BASE_ADDRESS_2);
++	}
++
+ 	val = PCI_COMMAND_SERR | PCI_COMMAND_PARITY | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
+ 	pci_writew_fn(reg, 0, val, PCI_COMMAND);
+ 
+@@ -177,5 +223,14 @@ int ehci_hcd_init(int index, enum usb_init_type init,
+ 	cap_base = ehci_readl(&(*hccr)->cr_capbase);
+ 	*hcor = (struct ehci_hcor *)((uint32_t)*hccr + HC_LENGTH(cap_base));
+ 
++
++	/* OHCI init */
++#define	USBH_POTPGT_WAIT_TIME			(0xFF << 24)
++#define	USBH_NOCP_ENABLE			0
++#define	USBH_OCPM_PORT_UNIT			BIT(11)
++#define	USBH_NPS_ALWAYS_POWERON			BIT(9)
++#define	USBH_PSM_PORT_UNIT			BIT(8)
++	writel(USBH_POTPGT_WAIT_TIME | USBH_NOCP_ENABLE | USBH_OCPM_PORT_UNIT | USBH_NPS_ALWAYS_POWERON | USBH_PSM_PORT_UNIT, &rohci->roothub.a);
++
+ 	return 0;
+ }
+-- 
+2.7.4
+

@@ -1,0 +1,29 @@
+From bc6d8b3d76622d4eacd35d4867d51b8ef6f0bf06 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 12 Dec 2016 17:53:15 +0000
+Subject: [PATCH] spl: Disable starting the kernel if no args have been
+ configured
+
+This is required when we add support for loading multiple images.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/spl/spl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/common/spl/spl.c b/common/spl/spl.c
+index 5ca5405..ad1a6f3 100644
+--- a/common/spl/spl.c
++++ b/common/spl/spl.c
+@@ -384,7 +384,7 @@ void board_init_r(gd_t *dummy1, ulong dummy2)
+ 	case IH_OS_U_BOOT:
+ 		debug("Jumping to U-Boot\n");
+ 		break;
+-#ifdef CONFIG_SPL_OS_BOOT
++#if defined(CONFIG_SPL_OS_BOOT) && defined(CONFIG_SYS_SPL_ARGS_ADDR)
+ 	case IH_OS_LINUX:
+ 		debug("Jumping to Linux\n");
+ 		spl_board_prepare_for_linux();
+-- 
+2.7.4
+

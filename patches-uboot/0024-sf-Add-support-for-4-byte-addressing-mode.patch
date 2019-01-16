@@ -1,0 +1,252 @@
+From 11c965cff85dfb727d06655c9aefaa986e639c1a Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 3 Oct 2016 14:29:53 +0100
+Subject: [PATCH] sf: Add support for 4-byte addressing mode
+
+If using a memory-mapped SPI Flash, you cannot use BARs to access
+more than 16MB, unless you split transfers at the 16MB boundaries.
+
+This patch switches the SPI Flash device into 4-byte addressing mode.
+i.e. the commands remain the same, but the SPI Flash device expects
+4-byte addresses instead of 3-bytes.
+Note that this is not sensible if you do not reset the SPI Flash
+device when the system is reset, since a boot ROM would normally
+expect the device to use 3-byte addresses.
+
+An alternative would be to change the commands used to the 4 byte
+address versions, which appear to be common across all SF devices.
+The only 4 byte address command that is not common across all
+devices is Quad Page Programming. However, since the performance
+of QPP is typically the same as single Page Program due to the
+underlying technology of NOR flash, it should be acceptable to
+use the single Page Program command.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/mtd/spi/sf_internal.h | 11 +++++-
+ drivers/mtd/spi/spi_flash.c   | 83 +++++++++++++++++++++++++++++++++----------
+ include/spi.h                 |  1 +
+ 3 files changed, 75 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/mtd/spi/sf_internal.h b/drivers/mtd/spi/sf_internal.h
+index 839cdbe..0fb725b 100644
+--- a/drivers/mtd/spi/sf_internal.h
++++ b/drivers/mtd/spi/sf_internal.h
+@@ -27,7 +27,8 @@ enum spi_nor_option_flags {
+ };
+ 
+ #define SPI_FLASH_3B_ADDR_LEN		3
+-#define SPI_FLASH_CMD_LEN		(1 + SPI_FLASH_3B_ADDR_LEN)
++#define SPI_FLASH_4B_ADDR_LEN		4
++#define SPI_FLASH_CMD_LEN		(1 + SPI_FLASH_4B_ADDR_LEN)
+ #define SPI_FLASH_16MB_BOUN		0x1000000
+ 
+ /* CFI Manufacture ID's */
+@@ -57,6 +58,12 @@ enum spi_nor_option_flags {
+ #define CMD_READ_DUAL_IO_FAST		0xbb
+ #define CMD_READ_QUAD_OUTPUT_FAST	0x6b
+ #define CMD_READ_QUAD_IO_FAST		0xeb
++#define CMD_READ_ARRAY_SLOW_4B		0x13
++#define CMD_READ_ARRAY_FAST_4B		0x0c
++#define CMD_READ_DUAL_OUTPUT_FAST_4B	0x3c
++#define CMD_READ_DUAL_IO_FAST_4B	0xbc
++#define CMD_READ_QUAD_OUTPUT_FAST_4B	0x6c
++#define CMD_READ_QUAD_IO_FAST_4B	0xec
+ #define CMD_READ_ID			0x9f
+ #define CMD_READ_STATUS			0x05
+ #define CMD_READ_STATUS1		0x35
+@@ -69,6 +76,8 @@ enum spi_nor_option_flags {
+ # define CMD_BANKADDR_BRRD		0x16
+ # define CMD_EXTNADDR_WREAR		0xC5
+ # define CMD_EXTNADDR_RDEAR		0xC8
++# define CMD_ENTER_4B_ADDRESSING	0xB7
++# define CMD_EXIT_4B_ADDRESSING		0xE9
+ #endif
+ 
+ /* Common status */
+diff --git a/drivers/mtd/spi/spi_flash.c b/drivers/mtd/spi/spi_flash.c
+index 14e7c08..4efad15 100644
+--- a/drivers/mtd/spi/spi_flash.c
++++ b/drivers/mtd/spi/spi_flash.c
+@@ -22,12 +22,19 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+-static void spi_flash_addr(u32 addr, u8 *cmd)
++static void spi_flash_addr(struct spi_flash *flash, u32 addr, u8 *cmd)
+ {
+ 	/* cmd[0] is actual command */
+-	cmd[1] = addr >> 16;
+-	cmd[2] = addr >> 8;
+-	cmd[3] = addr >> 0;
++	if (flash->spi->addressing_bytes == 4) {
++		cmd[1] = addr >> 24;
++		cmd[2] = addr >> 16;
++		cmd[3] = addr >> 8;
++		cmd[4] = addr >> 0;
++	} else {
++		cmd[1] = addr >> 16;
++		cmd[2] = addr >> 8;
++		cmd[3] = addr >> 0;
++	}
+ }
+ 
+ static int read_sr(struct spi_flash *flash, u8 *rs)
+@@ -139,9 +146,35 @@ static int read_bar(struct spi_flash *flash, const struct spi_flash_info *info)
+ 	u8 curr_bank = 0;
+ 	int ret;
+ 
++	flash->spi->addressing_bytes = 3;
++
+ 	if (flash->size <= SPI_FLASH_16MB_BOUN)
+ 		goto bar_end;
+ 
++	if (flash->memory_map) {
++		u8 cmd, data;
++
++		/* Switch to 4-byte addressing mode */
++		flash->spi->addressing_bytes = 4;
++
++		/* For Spansion, send Bank Write command with ExtAdd set */
++		cmd = CMD_BANKADDR_BRWR;
++		data = 0x80;
++		ret = spi_flash_cmd_write(flash->spi, &cmd, 1, &data, 1);
++		if (ret) {
++			debug("SF: fail to set 4-byte addressing (Spansion)\n");
++			return ret;
++		}
++
++		/* Everyone else reponds to 0xb7 command */
++		cmd = CMD_ENTER_4B_ADDRESSING;
++		ret = spi_flash_cmd_write(flash->spi, &cmd, 1, NULL, 0);
++		if (ret) {
++			debug("SF: fail to set 4-byte addressing\n");
++			return ret;
++		}
++	}
++
+ 	switch (JEDEC_MFR(info)) {
+ 	case SPI_FLASH_CFI_MFR_SPANSION:
+ 		flash->bank_read_cmd = CMD_BANKADDR_BRRD;
+@@ -313,6 +346,8 @@ int spi_flash_cmd_erase_ops(struct spi_flash *flash, u32 offset, size_t len)
+ 
+ 	cmd[0] = flash->erase_cmd;
+ 	while (len) {
++		u8 cmd_len = SPI_FLASH_CMD_LEN;
++
+ 		erase_addr = offset;
+ 
+ #ifdef CONFIG_SF_DUAL_FLASH
+@@ -320,16 +355,20 @@ int spi_flash_cmd_erase_ops(struct spi_flash *flash, u32 offset, size_t len)
+ 			spi_flash_dual(flash, &erase_addr);
+ #endif
+ #ifdef CONFIG_SPI_FLASH_BAR
+-		ret = write_bar(flash, erase_addr);
+-		if (ret < 0)
+-			return ret;
++		if (flash->spi->addressing_bytes == 3) {
++			ret = write_bar(flash, erase_addr);
++			if (ret < 0)
++				return ret;
++		}
+ #endif
+-		spi_flash_addr(erase_addr, cmd);
++		spi_flash_addr(flash, erase_addr, cmd);
++		if (flash->spi->addressing_bytes == 3)
++			cmd_len--;
+ 
+ 		debug("SF: erase %2x %2x %2x %2x (%x)\n", cmd[0], cmd[1],
+ 		      cmd[2], cmd[3], erase_addr);
+ 
+-		ret = spi_flash_write_common(flash, cmd, sizeof(cmd), NULL, 0);
++		ret = spi_flash_write_common(flash, cmd, cmd_len, NULL, 0);
+ 		if (ret < 0) {
+ 			debug("SF: erase failed\n");
+ 			break;
+@@ -388,6 +427,7 @@ int spi_flash_cmd_write_ops(struct spi_flash *flash, u32 offset,
+ 
+ 	cmd[0] = flash->write_cmd;
+ 	for (actual = 0; actual < len; actual += chunk_len) {
++		u8 cmd_len = SPI_FLASH_CMD_LEN;
+ 		write_addr = offset;
+ 
+ #ifdef CONFIG_SF_DUAL_FLASH
+@@ -406,12 +446,14 @@ int spi_flash_cmd_write_ops(struct spi_flash *flash, u32 offset,
+ 			chunk_len = min(chunk_len,
+ 					(size_t)spi->max_write_size);
+ 
+-		spi_flash_addr(write_addr, cmd);
++		spi_flash_addr(flash, write_addr, cmd);
++		if (flash->spi->addressing_bytes == 3)
++			cmd_len--;
+ 
+ 		debug("SF: 0x%p => cmd = { 0x%02x 0x%02x%02x%02x } chunk_len = %zu\n",
+ 		      buf + actual, cmd[0], cmd[1], cmd[2], cmd[3], chunk_len);
+ 
+-		ret = spi_flash_write_common(flash, cmd, sizeof(cmd),
++		ret = spi_flash_write_common(flash, cmd, cmd_len,
+ 					buf + actual, chunk_len);
+ 		if (ret < 0) {
+ 			debug("SF: write failed\n");
+@@ -492,6 +534,7 @@ int spi_flash_cmd_read_ops(struct spi_flash *flash, u32 offset,
+ 
+ 	cmd[0] = flash->read_cmd;
+ 	while (len) {
++		cmdsz = SPI_FLASH_CMD_LEN + flash->dummy_byte;
+ 		read_addr = offset;
+ 
+ #ifdef CONFIG_SF_DUAL_FLASH
+@@ -511,7 +554,9 @@ int spi_flash_cmd_read_ops(struct spi_flash *flash, u32 offset,
+ 		else
+ 			read_len = remain_len;
+ 
+-		spi_flash_addr(read_addr, cmd);
++		spi_flash_addr(flash, read_addr, cmd);
++		if (flash->spi->addressing_bytes == 3)
++			cmdsz--;
+ 
+ 		ret = spi_flash_read_common(flash, cmd, cmdsz, data, read_len);
+ 		if (ret < 0) {
+@@ -1100,13 +1145,6 @@ int spi_flash_scan(struct spi_flash *flash)
+ 		flash->flags |= SNOR_F_USE_FSR;
+ #endif
+ 
+-	/* Configure the BAR - discover bank cmds and read current bank */
+-#ifdef CONFIG_SPI_FLASH_BAR
+-	ret = read_bar(flash, info);
+-	if (ret < 0)
+-		return ret;
+-#endif
+-
+ #if CONFIG_IS_ENABLED(OF_CONTROL) && !CONFIG_IS_ENABLED(OF_PLATDATA)
+ 	ret = spi_flash_decode_fdt(gd->fdt_blob, flash);
+ 	if (ret) {
+@@ -1115,6 +1153,13 @@ int spi_flash_scan(struct spi_flash *flash)
+ 	}
+ #endif
+ 
++	/* Configure the BAR - discover bank cmds and read current bank */
++#ifdef CONFIG_SPI_FLASH_BAR
++	ret = read_bar(flash, info);
++	if (ret < 0)
++		return ret;
++#endif
++
+ #ifdef CONFIG_SPI_REGISTER_FLASH
+ 	/*
+ 	 * 'clever' SPI controllers that are dedicated to flashes and QSPI
+diff --git a/include/spi.h b/include/spi.h
+index a6d39f1..adc06ac 100644
+--- a/include/spi.h
++++ b/include/spi.h
+@@ -105,6 +105,7 @@ struct spi_slave {
+ 	unsigned int max_write_size;
+ 	void *memory_map;
+ 	u8 option;
++	u8 addressing_bytes;
+ 
+ 	u8 flags;
+ #define SPI_XFER_BEGIN		BIT(0)	/* Assert CS before transfer */
+-- 
+2.7.4
+

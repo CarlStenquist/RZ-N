@@ -1,0 +1,79 @@
+From b1e1d03284160ac391d636427ddb992289d2fef6 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 29 Mar 2017 15:02:28 +0100
+Subject: [PATCH] i2c: designware: Workaround for avoiding TX arbitration lost
+
+The Linux driver does this and we found that it fixes the same problem
+for U-Boot.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/i2c/designware_i2c.c | 22 ++++++++++++++++++++++
+ drivers/i2c/designware_i2c.h |  6 ++++++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/drivers/i2c/designware_i2c.c b/drivers/i2c/designware_i2c.c
+index c68ff64..dcefa6e 100644
+--- a/drivers/i2c/designware_i2c.c
++++ b/drivers/i2c/designware_i2c.c
+@@ -79,6 +79,7 @@ static unsigned int __dw_i2c_set_bus_speed(struct i2c_regs *i2c_base,
+ 	unsigned int cntl;
+ 	unsigned int hcnt, lcnt;
+ 	int i2c_spd;
++	u32 reg;
+ 
+ 	if (speed >= I2C_MAX_SPEED)
+ 		i2c_spd = IC_SPEED_MODE_MAX;
+@@ -142,6 +143,27 @@ static unsigned int __dw_i2c_set_bus_speed(struct i2c_regs *i2c_base,
+ 	if (scl_sda_cfg)
+ 		writel(scl_sda_cfg->sda_hold, &i2c_base->ic_sda_hold);
+ 
++	/*
++	 * Set SDA Rx Hold time to a minimum of 1 ic_clk.
++	 *
++	 * The I2C protocol specification requires 300ns of hold time on the SDA
++	 * signal in standard mode and fast mode, and a hold time long enough to
++	 * bridge the undefined part between logic 1 and logic 0 of the falling
++	 * edge of SCL in high speed mode and fast mode plus.
++	 *
++	 * However, board delays on the SCL and SDA signals can mean that the
++	 * hold-time requirement is met at the I2C master, but not at the I2C
++	 * slave (or vice-versa).
++	 */
++	reg = readl(&i2c_base->version);
++	if (reg >= DW_IC_SDA_HOLD_MIN_VERS) {
++		u32 sda_hold_time = readl(&i2c_base->ic_sda_hold);
++
++		if (!(sda_hold_time & DW_IC_SDA_HOLD_RX_MASK))
++			sda_hold_time |= 1 << DW_IC_SDA_HOLD_RX_SHIFT;
++		writel(sda_hold_time, &i2c_base->ic_sda_hold);
++	}
++
+ 	/* Enable back i2c now speed set */
+ 	dw_i2c_enable(i2c_base, true);
+ 
+diff --git a/drivers/i2c/designware_i2c.h b/drivers/i2c/designware_i2c.h
+index 270c29c..1d99505 100644
+--- a/drivers/i2c/designware_i2c.h
++++ b/drivers/i2c/designware_i2c.h
+@@ -44,6 +44,8 @@ struct i2c_regs {
+ 	u32 ic_tx_abrt_source;	/* 0x80 */
+ 	u8 res1[0x18];		/* 0x84 */
+ 	u32 ic_enable_status;	/* 0x9c */
++	u8 res2[0x58];		/* 0xa0 */
++	u32 version;		/* 0xf8 */
+ };
+ 
+ #if !defined(IC_CLK)
+@@ -132,4 +134,8 @@ struct i2c_regs {
+ #define I2C_FAST_SPEED		400000
+ #define I2C_STANDARD_SPEED	100000
+ 
++#define DW_IC_SDA_HOLD_MIN_VERS	0x3131312A
++#define DW_IC_SDA_HOLD_RX_SHIFT		16
++#define DW_IC_SDA_HOLD_RX_MASK		GENMASK(23, DW_IC_SDA_HOLD_RX_SHIFT)
++
+ #endif /* __DW_I2C_H_ */
+-- 
+2.7.4
+

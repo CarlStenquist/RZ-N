@@ -1,0 +1,2451 @@
+From 9109ba03ba09e63b28b20039be24ad875f50e534 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Thu, 17 Nov 2016 15:28:37 +0000
+Subject: [PATCH] ARM: rzn1: Add Renesas RZ/N1D-DB Demo board
+
+Reference board that has RZ/N1D device with DDR, QSPI, USB Gadget
+and dual ethernet ports. It can be used with an Extension board
+to provide additional ethernet ports, SD card, USB Host, CAN, LCD,
+etc.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/cpu/armv7/rzn1/Kconfig               |   8 +
+ arch/arm/dts/Makefile                         |   2 +
+ arch/arm/dts/rzn1d400-db.dts                  | 422 ++++++++++++++++++++++
+ arch/arm/dts/rzn1d400_preset_db.dts           | 500 ++++++++++++++++++++++++++
+ board/renesas/rzn1d400-db/Kconfig             |  15 +
+ board/renesas/rzn1d400-db/Makefile            |   8 +
+ board/renesas/rzn1d400-db/ddr-async.c         | 148 ++++++++
+ board/renesas/rzn1d400-db/rzn1-board-pinmux.h | 376 +++++++++++++++++++
+ board/renesas/rzn1d400-db/rzn1d-db.c          | 482 +++++++++++++++++++++++++
+ configs/rzn1d400-db_defconfig                 | 110 ++++++
+ include/configs/rzn1d400-db.h                 | 265 ++++++++++++++
+ 11 files changed, 2336 insertions(+)
+ create mode 100644 arch/arm/dts/rzn1d400-db.dts
+ create mode 100644 arch/arm/dts/rzn1d400_preset_db.dts
+ create mode 100644 board/renesas/rzn1d400-db/Kconfig
+ create mode 100644 board/renesas/rzn1d400-db/Makefile
+ create mode 100644 board/renesas/rzn1d400-db/ddr-async.c
+ create mode 100755 board/renesas/rzn1d400-db/rzn1-board-pinmux.h
+ create mode 100644 board/renesas/rzn1d400-db/rzn1d-db.c
+ create mode 100644 configs/rzn1d400-db_defconfig
+ create mode 100644 include/configs/rzn1d400-db.h
+
+diff --git a/arch/arm/cpu/armv7/rzn1/Kconfig b/arch/arm/cpu/armv7/rzn1/Kconfig
+index 07d48e2..84887bd 100644
+--- a/arch/arm/cpu/armv7/rzn1/Kconfig
++++ b/arch/arm/cpu/armv7/rzn1/Kconfig
+@@ -11,7 +11,15 @@ choice
+ 	prompt "RZN1 board select"
+ 	optional
+ 
++config TARGET_RENESAS_RZN1D400_DB
++	bool "Renesas rzn1d400-db"
++	select SUPPORT_SPL
++
++endchoice
++
+ config SYS_SOC
+ 	default "rzn1"
+ 
++source "board/renesas/rzn1d400-db/Kconfig"
++
+ endif
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 3ee608b..feddf13 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -163,6 +163,8 @@ dtb-$(CONFIG_FSL_LSCH2) += fsl-ls1043a-qds-duart.dtb \
+ 	fsl-ls1012a-rdb.dtb \
+ 	fsl-ls1012a-frdm.dtb
+ 
++dtb-$(CONFIG_TARGET_RENESAS_RZN1D400_DB) += rzn1d400-db.dtb
++
+ dtb-$(CONFIG_ARCH_SNAPDRAGON) += dragonboard410c.dtb
+ 
+ dtb-$(CONFIG_MACH_SUN4I) += \
+diff --git a/arch/arm/dts/rzn1d400-db.dts b/arch/arm/dts/rzn1d400-db.dts
+new file mode 100644
+index 0000000..4ddd9f4
+--- /dev/null
++++ b/arch/arm/dts/rzn1d400-db.dts
+@@ -0,0 +1,422 @@
++/*
++ * Device Tree Source for the RZN1-400 Demo Board
++ * This dts is for use when the Cortex M3 is controls GMAC1, the 5-Port Switch
++ * and the RGMII/GMII Converters.
++ *
++ * Copyright (C) 2016 Renesas Electronics Europe Ltd
++ *
++ * This file is licensed under the terms of the GNU General Public License
++ * version 2.  This program is licensed "as is" without any warranty of any
++ * kind, whether express or implied.
++ */
++
++/dts-v1/;
++
++#include "rzn1.dtsi"
++#include "rzn1-clocks.dtsi"
++
++/ {
++	model = "RZ/N1D Demo Board";
++	compatible = "renesas,rzn1d-db", "renesas,rzn1";
++
++	chosen {
++		/*
++		 * This is a default command line to help with booting using
++		 * qemu and a ramdisk, it is not meant to stay in the final
++		 * file
++		 g_mass_storage.removable=y g_mass_storage.stall=n
++		 */
++		bootargs = "console=ttyS0,115200 earlyprintk debug rdinit=/linuxrc";
++		stdout-path = &uart0;
++		linux,stdout-path = &uart0;
++	};
++	c2c_sram@20080000 {
++		compatible = "mmio-sram";
++		reg = <0x20080000 0x3000>;
++	};
++	hoard: cat: nmi: rmii {
++		#address-cells = <1>;
++		#size-cells = <0>;
++	};
++	leds {
++		compatible = "gpio-leds";
++
++		led_1 {
++			label = "pl_gpio92";
++			gpios = <&gpio1b 23 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "cpu0";
++		};
++		led_2 {
++			label = "pl_gpio93";
++			gpios = <&gpio1b 24 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "cpu1";
++		};
++		pca0 {
++			label = "pca0";
++			gpios = <&pca9698 0 GPIO_ACTIVE_HIGH>;
++		};
++		pca1 {
++			label = "pca1";
++			gpios = <&pca9698 1 GPIO_ACTIVE_HIGH>;
++		};
++		pca2 {
++			label = "pca2";
++			gpios = <&pca9698 2 GPIO_ACTIVE_HIGH>;
++		};
++		pca3 {
++			label = "pca3";
++			gpios = <&pca9698 3 GPIO_ACTIVE_HIGH>;
++		};
++		pca4 {
++			label = "pca4";
++			gpios = <&pca9698 4 GPIO_ACTIVE_HIGH>;
++		};
++		pca5 {
++			label = "pca5";
++			gpios = <&pca9698 5 GPIO_ACTIVE_HIGH>;
++		};
++		pca6 {
++			label = "pca6";
++			gpios = <&pca9698 6 GPIO_ACTIVE_HIGH>;
++		};
++		pca7 {
++			label = "pca7";
++			gpios = <&pca9698 7 GPIO_ACTIVE_HIGH>;
++		};
++
++		/* These aren't LEDs, they are gpios attached to the pca9698
++		 * port expander. They select the I2C master used to access the
++		 * EEPROM device. The ACTIVE LOW/HIGH settings ensures Linux
++		 * sets the correctly if not done by U-Boot.
++		 */
++		ctrl0 {
++			label = "ctrl0";
++			gpios = <&pca9698 16 GPIO_ACTIVE_LOW>;
++		};
++		ctrl1 {
++			label = "ctrl1";
++			gpios = <&pca9698 17 GPIO_ACTIVE_HIGH>;
++		};
++		ctrl2 {
++			label = "ctrl2";
++			gpios = <&pca9698 18 GPIO_ACTIVE_HIGH>;
++		};
++	};
++};
++
++/* Map the USB pinmux to the peripheral port */
++#define usb usbh_pci
++/* ethX refers to the physical pins for each ethernet interface. Here we simply
++ * place them in the hoard node, and the users of the pins will then indicate
++ * are needed by adding a pinctrl-0 entry for them.
++ */
++#define eth0 hoard
++#define eth1 hoard
++#define eth2 hoard
++#define eth3 hoard
++#define eth4 hoard
++#define refclk hoard
++#define mdio0 hoard
++#define mdio1 hoard
++#define lcd fb0
++
++#include "rzn1d400_preset_db.dts"
++
++&gpioirq {
++	status = "okay";
++	gpioirq-0 = <&gpio2a 24 GPIO_ACTIVE_LOW>;	/* 146: ETH Port 1 IRQ */
++	gpioirq-1 = <&gpio2a 4 GPIO_ACTIVE_LOW>;	/* 126: ETH Port 2 IRQ */
++	gpioirq-2 = <&gpio1a 28 GPIO_ACTIVE_LOW>;	/* 118: ETH Port 3 IRQ */
++	gpioirq-3 = <&gpio2a 25 GPIO_ACTIVE_LOW>;	/* 147: ETH Port 4 IRQ */
++	gpioirq-4 = <&gpio2a 27 GPIO_ACTIVE_LOW>;	/* 149: ETH Port 5 IRQ */
++	gpioirq-5 = <&gpio2a 26 GPIO_ACTIVE_LOW>;	/* 148: TouchSCRN_IRQ  */
++};
++
++&uart0 {
++	status = "okay";
++	u-boot,dm-pre-reloc;
++};
++&uart2 {
++	status = "okay";
++};
++&uart3 {
++	status = "okay";
++};
++&i2c1 {
++	status = "okay";
++	clock-frequency = <400000>;
++	pca9698: gpio@20 {
++		compatible = "nxp,pca9698";
++		reg = <0x20>;
++		gpio-controller;
++		#gpio-cells = <2>;
++		gpio-bank-name="pca";
++	};
++	lm75: lm75@49 {
++		/* Ext Board: Temperature sensor */
++		compatible = "lm75";
++		reg = <0x49>;
++	};
++	at24@50 {
++		compatible = "at24,24c64";
++		pagesize = <32>;
++		reg = <0x50>;
++	};
++	polytouch: edt-ft5x06@38 {
++		/* Ext Board: touch sensor on LCD */
++		compatible = "edt,edt-ft5x06";
++		reg = <0x38>;
++		interrupt-parent = <&gpioirq>;
++		interrupts = <5 0>;
++		touchscreen-size-x = <800>;
++		touchscreen-size-y = <480>;
++		// touchscreen-swapped-x-y;
++	};
++};
++&gpio1 {
++	status = "okay";
++};
++&gpio2 {
++	status = "okay";
++};
++
++&gmac0 {
++	/* Only accessible from the Ext Board */
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_mdio0>, <&pins_eth0>;
++
++	phy-handle = <&phy_mii0>;
++
++	mdio0 {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		compatible = "snps,dwmac-mdio";
++		phy_mii0: ethernet-phy@8 {
++			/* Ext Board: Marvell 88E1512 PHY on J22 */
++			device_type = "ethernet-phy";
++			phy-mode = "rgmii-id";
++			reg = <8>;
++			/* Set LED0 as active low link status, LED2 as interrupt */
++			marvell,reg-init = <3 16 0 0x1010 3 18 0 0x4980>;
++			interrupt-parent = <&gpioirq>;
++			interrupts = <0>;
++		};
++	};
++};
++&gmac1 {
++	status = "disabled";
++
++	/* Fixed 1Gbps link to the 5-port switch */
++	fixed-link {
++		speed = <1000>;
++		full-duplex;
++	};
++};
++&ethswitch {
++	status = "disabled";
++	bus_freq = <2500000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_mdio1>,
++		<&pins_eth1>, <&pins_eth2>, <&pins_eth3>, <&pins_eth4>;
++
++	phy-reset-gpios = <&gpio1b 25 GPIO_ACTIVE_HIGH>;
++	phy-reset-duration = <15>;
++
++	#address-cells = <1>;
++	#size-cells = <0>;
++	portA: phy_mii4: ethernet-phy@5 {
++		device_type = "ethernet-phy";
++		phy-mode = "mii";
++		reg = <5>;
++		/* Set LED0 as active low link status */
++		micrel,led-mode = <1>;
++		interrupt-parent = <&gpioirq>;
++		interrupts = <4>;
++	};
++	portB: phy_mii3: ethernet-phy@4 {
++		device_type = "ethernet-phy";
++		phy-mode = "mii";
++		reg = <4>;
++		/* Set LED0 as active low link status */
++		micrel,led-mode = <1>;
++		interrupt-parent = <&gpioirq>;
++		interrupts = <3>;
++	};
++	portC: phy_mii2: ethernet-phy@10 {
++		/* Ext Board: Marvell 88E1512 PHY on J24 */
++		device_type = "ethernet-phy";
++		phy-mode = "rgmii-id";
++		reg = <10>;
++		/* Set LED0 as active low link status, LED2 as interrupt */
++		marvell,reg-init = <3 16 0 0x1010 3 18 0 0x4980>;
++		interrupt-parent = <&gpioirq>;
++		interrupts = <2>;
++	};
++	portD: phy_mii1: ethernet-phy@1 {
++		/* Ext Board: Marvell 88E1512 PHY on J23 */
++		device_type = "ethernet-phy";
++		phy-mode = "rgmii-id";
++		reg = <1>;
++		/* Set LED0 as active low link status, LED2 as interrupt */
++		marvell,reg-init = <3 16 0 0x1010 3 18 0 0x4980>;
++		interrupt-parent = <&gpioirq>;
++		interrupts = <1>;
++	};
++};
++&eth_miic {
++	status = "disabled";
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_refclk>;
++	/* RIN Mode Control - GMAC1 on all Switch ports */
++	mode_control = <0x13>;
++
++	mii0: eth-mii0 {
++		phy-handle = <&phy_mii0>;
++	};
++	mii1: eth-mii1 {
++		phy-handle = <&phy_mii1>;
++	};
++	mii2: eth-mii2 {
++		phy-handle = <&phy_mii2>;
++	};
++	mii3: eth-mii3 {
++		phy-handle = <&phy_mii3>;
++	};
++	mii4: eth-mii4 {
++		phy-handle = <&phy_mii4>;
++	};
++};
++&qspi0 {
++	status = "okay";
++	u-boot,dm-pre-reloc;
++
++	flash: mx25l25635@0 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "macronix,mx25l25635e", "spi-flash";
++		reg = <0>;
++		spi-max-frequency = <62500000>;
++		spi-cpha;
++		spi-cpol;
++		spi-rx-bus-width = <4>;
++		renesas,rzn1-read-cmd = <0x6b 8 0>;
++		renesas,rzn1-readcap-delay = <1>;
++		/* The properties below are used by U-Boot */
++		tshsl-ns = <30>;
++		tsd2d-ns = <3>;
++		tchsh-ns = <3>;
++		tslch-ns = <3>;
++		memory-map = <RZN1_V_QSPI_BASE RZN1_V_QSPI_SIZE>;
++		memory-map-write = <1>;
++		u-boot,dm-pre-reloc;
++
++		partition@0 {
++			/* 64KB */
++			label = "qspi0:spl";
++			reg = <0x0000000 0x00010000>;
++		};
++		partition@1 {
++			/* 64KB */
++			label = "qspi0:pkgt";
++			reg = <0x0010000 0x00010000>;
++		};
++		partition@2 {
++			/* 512KB */
++			label = "qspi0:u-boot";
++			reg = <0x0020000 0x00080000>;
++		};
++		partition@3 {
++			/* 64KB */
++			label = "qspi0:env";
++			reg = <0x00a0000 0x00010000>;
++		};
++		partition@4 {
++			/* 128KB */
++			label = "qspi0:dtb";
++			reg = <0x00b0000 0x00020000>;
++		};
++		partition@5 {
++			/* 1MB */
++			label = "qspi0:cm3";
++			reg = <0x00d0000 0x00100000>;
++		};
++		partition@6 {
++			/* 6MB */
++			label = "qspi0:kernel";
++			reg = <0x01d0000 0x00600000>;
++		};
++		partition@7 {
++			/* Remaining */
++			label = "qspi0:data";
++			reg = <0x07d0000 0>;
++		};
++	};
++};
++&usbf {
++	status = "okay";
++};
++&usbh_pci {
++	/* Ext Board */
++	status = "okay";
++};
++&wdtsafe0 {
++	status = "okay";
++};
++&dma0 {
++	status = "okay";
++	/* Select spi0, spi1, spi2, spi3, uart3, uart4, uart5, uart6 */
++	rzn1_cfg_dmamux = <0x0000ffff>;
++	rzn1_cfg_dmamux_mask = <0x0000ffff>;
++};
++&spi0 {
++	status = "okay";
++	dmas =  <&dma0 8 0 0>,
++		<&dma0 9 0 0>;
++	dma-names = "rx", "tx";
++
++	/* Ext Board: Serial (SPI) F-RAM device (FM25V10-G) */
++	fram: fm25@0 {
++		compatible = "cypress,fm25";
++		reg = <0>;
++		/* Reduced clock rate due to quickswitch */
++		spi-max-frequency = <21000000>;
++	};
++};
++&sdio0 {
++	/* Ext Board */
++	status = "okay";
++};
++&rtc0 {
++	status = "okay";
++};
++&can1 {
++	/* Ext Board */
++	status = "okay";
++};
++&fb0 {
++	status = "okay";
++
++	bits-per-pixel = <32>;
++	bus-width = <24>;
++
++	/* Ext Board: NewHaven 5" LCD module NHD-5.0-800480TF-ATXL#-CTP  */
++	backlight-pwm-clock = <300>;
++	display-timings {
++		native-mode = <&timing0>;
++		timing0: timing0 {
++			clock-frequency = <33400000>;
++			hactive = <800>;
++			vactive = <480>;
++			hback-porch = <88>;
++			hfront-porch = <40>;
++			vback-porch = <32>;
++			vfront-porch = <13>;
++			hsync-len = <1>;
++			vsync-len = <3>;
++			hsync-active = <0>;
++			vsync-active = <0>;
++			de-active = <1>;
++		};
++	};
++};
+diff --git a/arch/arm/dts/rzn1d400_preset_db.dts b/arch/arm/dts/rzn1d400_preset_db.dts
+new file mode 100644
+index 0000000..e79b99b
+--- /dev/null
++++ b/arch/arm/dts/rzn1d400_preset_db.dts
+@@ -0,0 +1,500 @@
++﻿/*
++ * This file was autogenerated
++ * DO NOT EDIT
++ * (C) 2015-2016 Renesas Electronics Europe, LTD
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are met:
++ *
++ * 1. Redistributions of source code must retain the above copyright notice,
++ * this list of conditions and the following disclaimer.
++ *
++ * 2. Redistributions in binary form must reproduce the above copyright notice,
++ * this list of conditions and the following disclaimer in the documentation
++ * and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
++ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ * POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include <rzn1.dtsi>
++
++/*
++ * AUTOGENERATED DO NOT EDIT
++ *
++ * Renesas RZ/N1D Demo Board
++ * This file only sets the pin function by default.
++ *
++ * You can override the default mux pullup/down and drive by
++ * defining the following macros in the board file before
++ * including this.
++ */
++
++#ifndef RZN1_MUX_DEFAULT
++#define RZN1_MUX_DEFAULT RZN1_MUX
++#endif
++
++#ifndef RZN1_MUX_CAN0
++#define RZN1_MUX_CAN0 RZN1_MUX_6MA
++#endif
++#ifndef RZN1_MUX_CAN1
++#define RZN1_MUX_CAN1 RZN1_MUX_6MA
++#endif
++#ifndef RZN1_MUX_ETH0
++#define RZN1_MUX_ETH0 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH1
++#define RZN1_MUX_ETH1 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH2
++#define RZN1_MUX_ETH2 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH3
++#define RZN1_MUX_ETH3 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH4
++#define RZN1_MUX_ETH4 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_GPIO
++#define RZN1_MUX_GPIO RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_GPIO1
++#define RZN1_MUX_GPIO1 RZN1_MUX_GPIO
++#endif
++#ifndef RZN1_MUX_GPIO2
++#define RZN1_MUX_GPIO2 RZN1_MUX_GPIO
++#endif
++#ifndef RZN1_MUX_I2C1
++#define RZN1_MUX_I2C1 RZN1_MUX_12MA
++#endif
++#ifndef RZN1_MUX_LCD
++#define RZN1_MUX_LCD RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_MDIO
++#define RZN1_MUX_MDIO RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_MDIO0
++#define RZN1_MUX_MDIO0 RZN1_MUX_MDIO
++#endif
++#ifndef RZN1_MUX_MDIO1
++#define RZN1_MUX_MDIO1 RZN1_MUX_MDIO
++#endif
++#ifndef RZN1_MUX_NMI
++#define RZN1_MUX_NMI RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_QSPI0
++#define RZN1_MUX_QSPI0 RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_REFCLK
++#define RZN1_MUX_REFCLK RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_SDIO
++#define RZN1_MUX_SDIO RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_SDIO0
++#define RZN1_MUX_SDIO0 RZN1_MUX_SDIO
++#endif
++#ifndef RZN1_MUX_SPI
++#define RZN1_MUX_SPI RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_SPI0
++#define RZN1_MUX_SPI0 RZN1_MUX_SPI
++#endif
++#ifndef RZN1_MUX_SWITCH
++#define RZN1_MUX_SWITCH RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_UART0
++#define RZN1_MUX_UART0 RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_UART2
++#define RZN1_MUX_UART2 RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_UART
++#define RZN1_MUX_UART RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_UART3
++#define RZN1_MUX_UART3 RZN1_MUX_UART
++#endif
++#ifndef RZN1_MUX_USB
++#define RZN1_MUX_USB RZN1_MUX_DEFAULT
++#endif
++
++&pinctrl {
++	pins_can0: pins_can0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_CAN0(162, CAN)		/* CAN0_TXD */
++			RZN1_MUX_CAN0(163, CAN)		/* CAN0_RXD */
++		>;
++	};
++	pins_can1: pins_can1 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_CAN1(109, CAN)		/* CAN1_TXD */
++			RZN1_MUX_CAN1(110, CAN)		/* CAN1_RXD */
++		>;
++	};
++	pins_eth0: pins_eth0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_ETH0(0, CLK_ETH_MII_RGMII_RMII)	/* ETH0_TXCLK */
++			RZN1_MUX_ETH0(1, CLK_ETH_MII_RGMII_RMII)	/* ETH0_TXD[0] */
++			RZN1_MUX_ETH0(2, CLK_ETH_MII_RGMII_RMII)	/* ETH0_TXD[1] */
++			RZN1_MUX_ETH0(3, CLK_ETH_MII_RGMII_RMII)	/* ETH0_TXD[2] */
++			RZN1_MUX_ETH0(4, CLK_ETH_MII_RGMII_RMII)	/* ETH0_TXD[3] */
++			RZN1_MUX_ETH0(5, CLK_ETH_MII_RGMII_RMII)	/* ETH0_TXEN */
++			RZN1_MUX_ETH0(6, CLK_ETH_MII_RGMII_RMII)	/* ETH0_RXCLK */
++			RZN1_MUX_ETH0(7, CLK_ETH_MII_RGMII_RMII)	/* ETH0_RXD[0] */
++			RZN1_MUX_ETH0(8, CLK_ETH_MII_RGMII_RMII)	/* ETH0_RXD[1] */
++			RZN1_MUX_ETH0(9, CLK_ETH_MII_RGMII_RMII)	/* ETH0_RXD[2] */
++			RZN1_MUX_ETH0(10, CLK_ETH_MII_RGMII_RMII)	/* ETH0_RXD[3] */
++			RZN1_MUX_ETH0(11, CLK_ETH_MII_RGMII_RMII)	/* ETH0_RXDV */
++		>;
++	};
++	pins_eth1: pins_eth1 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_ETH1(12, CLK_ETH_MII_RGMII_RMII)	/* ETH1_TXCLK */
++			RZN1_MUX_ETH1(13, CLK_ETH_MII_RGMII_RMII)	/* ETH1_TXD[0] */
++			RZN1_MUX_ETH1(14, CLK_ETH_MII_RGMII_RMII)	/* ETH1_TXD[1] */
++			RZN1_MUX_ETH1(15, CLK_ETH_MII_RGMII_RMII)	/* ETH1_TXD[2] */
++			RZN1_MUX_ETH1(16, CLK_ETH_MII_RGMII_RMII)	/* ETH1_TXD[3] */
++			RZN1_MUX_ETH1(17, CLK_ETH_MII_RGMII_RMII)	/* ETH1_TXEN */
++			RZN1_MUX_ETH1(18, CLK_ETH_MII_RGMII_RMII)	/* ETH1_RXCLK */
++			RZN1_MUX_ETH1(19, CLK_ETH_MII_RGMII_RMII)	/* ETH1_RXD[0] */
++			RZN1_MUX_ETH1(20, CLK_ETH_MII_RGMII_RMII)	/* ETH1_RXD[1] */
++			RZN1_MUX_ETH1(21, CLK_ETH_MII_RGMII_RMII)	/* ETH1_RXD[2] */
++			RZN1_MUX_ETH1(22, CLK_ETH_MII_RGMII_RMII)	/* ETH1_RXD[3] */
++			RZN1_MUX_ETH1(23, CLK_ETH_MII_RGMII_RMII)	/* ETH1_RXDV */
++		>;
++	};
++	pins_eth2: pins_eth2 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_ETH2(24, CLK_ETH_MII_RGMII_RMII)	/* ETH2_TXCLK */
++			RZN1_MUX_ETH2(25, CLK_ETH_MII_RGMII_RMII)	/* ETH2_TXD[0] */
++			RZN1_MUX_ETH2(26, CLK_ETH_MII_RGMII_RMII)	/* ETH2_TXD[1] */
++			RZN1_MUX_ETH2(27, CLK_ETH_MII_RGMII_RMII)	/* ETH2_TXD[2] */
++			RZN1_MUX_ETH2(28, CLK_ETH_MII_RGMII_RMII)	/* ETH2_TXD[3] */
++			RZN1_MUX_ETH2(29, CLK_ETH_MII_RGMII_RMII)	/* ETH2_TXEN */
++			RZN1_MUX_ETH2(30, CLK_ETH_MII_RGMII_RMII)	/* ETH2_RXCLK */
++			RZN1_MUX_ETH2(31, CLK_ETH_MII_RGMII_RMII)	/* ETH2_RXD[0] */
++			RZN1_MUX_ETH2(32, CLK_ETH_MII_RGMII_RMII)	/* ETH2_RXD[1] */
++			RZN1_MUX_ETH2(33, CLK_ETH_MII_RGMII_RMII)	/* ETH2_RXD[2] */
++			RZN1_MUX_ETH2(34, CLK_ETH_MII_RGMII_RMII)	/* ETH2_RXD[3] */
++			RZN1_MUX_ETH2(35, CLK_ETH_MII_RGMII_RMII)	/* ETH2_RXDV */
++		>;
++	};
++	pins_eth3: pins_eth3 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_ETH3(36, CLK_ETH_MII_RGMII_RMII)	/* ETH3_TXCLK */
++			RZN1_MUX_ETH3(37, CLK_ETH_MII_RGMII_RMII)	/* ETH3_TXD[0] */
++			RZN1_MUX_ETH3(38, CLK_ETH_MII_RGMII_RMII)	/* ETH3_TXD[1] */
++			RZN1_MUX_ETH3(39, CLK_ETH_MII_RGMII_RMII)	/* ETH3_TXD[2] */
++			RZN1_MUX_ETH3(40, CLK_ETH_MII_RGMII_RMII)	/* ETH3_TXD[3] */
++			RZN1_MUX_ETH3(41, CLK_ETH_MII_RGMII_RMII)	/* ETH3_TXEN */
++			RZN1_MUX_ETH3(42, CLK_ETH_MII_RGMII_RMII)	/* ETH3_RXCLK */
++			RZN1_MUX_ETH3(43, CLK_ETH_MII_RGMII_RMII)	/* ETH3_RXD[0] */
++			RZN1_MUX_ETH3(44, CLK_ETH_MII_RGMII_RMII)	/* ETH3_RXD[1] */
++			RZN1_MUX_ETH3(45, CLK_ETH_MII_RGMII_RMII)	/* ETH3_RXD[2] */
++			RZN1_MUX_ETH3(46, CLK_ETH_MII_RGMII_RMII)	/* ETH3_RXD[3] */
++			RZN1_MUX_ETH3(47, CLK_ETH_MII_RGMII_RMII)	/* ETH3_RXDV */
++		>;
++	};
++	pins_eth4: pins_eth4 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_ETH4(48, CLK_ETH_MII_RGMII_RMII)	/* ETH4_TXCLK */
++			RZN1_MUX_ETH4(49, CLK_ETH_MII_RGMII_RMII)	/* ETH4_TXD[0] */
++			RZN1_MUX_ETH4(50, CLK_ETH_MII_RGMII_RMII)	/* ETH4_TXD[1] */
++			RZN1_MUX_ETH4(51, CLK_ETH_MII_RGMII_RMII)	/* ETH4_TXD[2] */
++			RZN1_MUX_ETH4(52, CLK_ETH_MII_RGMII_RMII)	/* ETH4_TXD[3] */
++			RZN1_MUX_ETH4(53, CLK_ETH_MII_RGMII_RMII)	/* ETH4_TXEN */
++			RZN1_MUX_ETH4(54, CLK_ETH_MII_RGMII_RMII)	/* ETH4_RXCLK */
++			RZN1_MUX_ETH4(55, CLK_ETH_MII_RGMII_RMII)	/* ETH4_RXD[0] */
++			RZN1_MUX_ETH4(56, CLK_ETH_MII_RGMII_RMII)	/* ETH4_RXD[1] */
++			RZN1_MUX_ETH4(57, CLK_ETH_MII_RGMII_RMII)	/* ETH4_RXD[2] */
++			RZN1_MUX_ETH4(58, CLK_ETH_MII_RGMII_RMII)	/* ETH4_RXD[3] */
++			RZN1_MUX_ETH4(59, CLK_ETH_MII_RGMII_RMII)	/* ETH4_RXDV */
++		>;
++	};
++	pins_gpio1: pins_gpio1 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_GPIO1(83, GPIO)	/* GPIO1B[14] */
++			RZN1_MUX_GPIO1(84, GPIO)	/* GPIO1B[15] */
++			RZN1_MUX_GPIO1(85, GPIO)	/* GPIO1B[16] */
++			RZN1_MUX_GPIO1(86, GPIO)	/* GPIO1B[17] */
++			RZN1_MUX_GPIO1(87, GPIO)	/* GPIO1B[18] */
++			RZN1_MUX_GPIO1(88, GPIO)	/* GPIO1B[19] */
++			RZN1_MUX_GPIO1(89, GPIO)	/* GPIO1B[20] */
++			RZN1_MUX_GPIO1(90, GPIO)	/* GPIO1B[21] */
++			RZN1_MUX_GPIO1(91, GPIO)	/* GPIO1B[22] */
++			RZN1_MUX_GPIO1(92, GPIO)	/* GPIO1B[23] */
++			RZN1_MUX_GPIO1(93, GPIO)	/* GPIO1B[24] */
++			RZN1_MUX_GPIO1(94, GPIO)	/* Eth PHY Reset (GPIO1B[25]) */
++			RZN1_MUX_GPIO1(117, GPIO)	/* GPIO1A[27] */
++			RZN1_MUX_GPIO1(118, GPIO)	/* Eth3 IRQ (GPIO1A[28]) */
++			RZN1_MUX_GPIO1(154, GPIO)	/* MDC PHY1 GPIO (GPIO1B[30]) */
++			RZN1_MUX_GPIO1(155, GPIO)	/* MDIO PHY1 GPIO (GPIO1B[31]) */
++		>;
++	};
++	pins_gpio2: pins_gpio2 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_GPIO2(126, GPIO)	/* Eth2 IRQ (GPIO2A[4]) */
++			RZN1_MUX_GPIO2(146, GPIO)	/* Eth1 IRQ (GPIO2A[24]) */
++			RZN1_MUX_GPIO2(147, GPIO)	/* Eth4 IRQ (GPIO2A[25]) */
++			RZN1_MUX_GPIO2(148, GPIO)	/* Touch IRQ (GPIO2A[26]) */
++			RZN1_MUX_GPIO2(149, GPIO)	/* Eth5 IRQ (GPIO2A[27]) */
++		>;
++	};
++	pins_i2c1: pins_i2c1 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_I2C1(115, I2C)		/* I2C1_SCL */
++			RZN1_MUX_I2C1(116, I2C)		/* I2C1_SDA */
++		>;
++	};
++	pins_lcd: pins_lcd {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_LCD(62, LCD)		/* LCD_R[1] */
++			RZN1_MUX_LCD(63, LCD)		/* LCD_G[1] */
++			RZN1_MUX_LCD(64, LCD)		/* LCD_B[1] */
++			RZN1_MUX_LCD(65, LCD)		/* LCD_R[2] */
++			RZN1_MUX_LCD(66, LCD)		/* LCD_G[2] */
++			RZN1_MUX_LCD(67, LCD)		/* LCD_B[2] */
++			RZN1_MUX_LCD(68, LCD)		/* LCD_R[3] */
++			RZN1_MUX_LCD(69, LCD)		/* LCD_G[3] */
++			RZN1_MUX_LCD(70, LCD)		/* LCD_B[3] */
++			RZN1_MUX_LCD(71, LCD)		/* LCD_R[4] */
++			RZN1_MUX_LCD(72, LCD)		/* LCD_G[4] */
++			RZN1_MUX_LCD(73, LCD)		/* LCD_B[4] */
++			RZN1_MUX_LCD(127, LCD)		/* LCD_PWM[0] */
++			RZN1_MUX_LCD(128, LCD)		/* LCD_PCLK */
++			RZN1_MUX_LCD(129, LCD)		/* LCD_HSYNC */
++			RZN1_MUX_LCD(130, LCD)		/* LCD_VSYNC */
++			RZN1_MUX_LCD(131, LCD)		/* LCD_DE */
++			RZN1_MUX_LCD(132, LCD)		/* LCD_PE */
++			RZN1_MUX_LCD(133, LCD)		/* LCD_PWM[1] */
++			RZN1_MUX_LCD(134, LCD)		/* LCD_R[5] */
++			RZN1_MUX_LCD(135, LCD)		/* LCD_R[0] */
++			RZN1_MUX_LCD(136, LCD)		/* LCD_G[0] */
++			RZN1_MUX_LCD(137, LCD)		/* LCD_B[0] */
++			RZN1_MUX_LCD(138, LCD)		/* LCD_R[6] */
++			RZN1_MUX_LCD(139, LCD)		/* LCD_G[6] */
++			RZN1_MUX_LCD(140, LCD)		/* LCD_B[6] */
++			RZN1_MUX_LCD(141, LCD)		/* LCD_R[7] */
++			RZN1_MUX_LCD(142, LCD)		/* LCD_G[7] */
++			RZN1_MUX_LCD(143, LCD)		/* LCD_B[7] */
++			RZN1_MUX_LCD(144, LCD)		/* LCD_G[5] */
++			RZN1_MUX_LCD(145, LCD)		/* LCD_B[5] */
++		>;
++	};
++	pins_mdio0: pins_mdio0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_MDIO0(150, ETH_MDIO)	/* MDIO0_MDC */
++			RZN1_MUX_MDIO0(151, ETH_MDIO)	/* MDIO0_MDIO */
++			RZN1_MUX_MDIO0(170, MDIO_MUX_MAC0)	/* MDIO0_MUX_MAC0 */
++		>;
++	};
++	pins_mdio1: pins_mdio1 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_MDIO1(152, ETH_MDIO)	/* MDIO1_MDC */
++			RZN1_MUX_MDIO1(153, ETH_MDIO)	/* MDIO1_MDIO */
++			RZN1_MUX_MDIO1(171, MDIO_MUX_SWITCH)	/* MDIO1_MUX_SWITCH */
++		>;
++	};
++	pins_nmi: pins_nmi {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_NMI(111, ETHERCAT)	/* NMI_CORTEXM[3] */
++		>;
++	};
++	pins_qspi0: pins_qspi0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_QSPI0(74, QSPI)	/* QSPI0_CS_N[0] */
++			RZN1_MUX_QSPI0(75, QSPI)	/* QSPI0_IO[3] */
++			RZN1_MUX_QSPI0(76, QSPI)	/* QSPI0_IO[2] */
++			RZN1_MUX_QSPI0(77, QSPI)	/* QSPI0_IO[1] */
++			RZN1_MUX_QSPI0(78, QSPI)	/* QSPI0_IO[0] */
++			RZN1_MUX_QSPI0(79, QSPI)	/* QSPI0_CLK */
++		>;
++	};
++	pins_refclk: pins_refclk {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_REFCLK(60, CLK_ETH_MII_RGMII_RMII)	/* REFCLK_RGMII */
++			RZN1_MUX_REFCLK(61, CLK_ETH_NAND)	/* REFCLK_MII */
++		>;
++	};
++	pins_sdio0: pins_sdio0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_SDIO0(95, SDIO)	/* SDIO0_CMD */
++			RZN1_MUX_12MA(96, SDIO)		/* SDIO0_CLK */
++			RZN1_MUX_SDIO0(97, SDIO)	/* SDIO0_IO[0] */
++			RZN1_MUX_SDIO0(98, SDIO)	/* SDIO0_IO[1] */
++			RZN1_MUX_SDIO0(99, SDIO)	/* SDIO0_IO[2] */
++			RZN1_MUX_SDIO0(100, SDIO)	/* SDIO0_IO[3] */
++			RZN1_MUX_SDIO0(101, SDIO_E)	/* SDIO0_CD_N */
++			RZN1_MUX_SDIO0(102, SDIO_E)	/* SDIO0_WP */
++		>;
++	};
++	pins_spi0: pins_spi0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_SPI0(156, SPI0_M)	/* SPI0_CLK */
++			RZN1_MUX_SPI0(157, SPI0_M)	/* SPI0_MOSI */
++			RZN1_MUX_SPI0(158, SPI0_M)	/* SPI0_MISO */
++			RZN1_MUX_SPI0(159, SPI0_M)	/* SPI0_SS_N[0] */
++		>;
++	};
++	pins_switch: pins_switch {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_SWITCH(80, MAC_MTIP_SWITCH)	/* SWITCH_MII_LINK[5] */
++			RZN1_MUX_SWITCH(81, MAC_MTIP_SWITCH)	/* SWITCH_MII_LINK[4] */
++			RZN1_MUX_SWITCH(82, MAC_MTIP_SWITCH)	/* SWITCH_MII_LINK[3] */
++			RZN1_MUX_SWITCH(114, MAC_MTIP_SWITCH)	/* SWITCH_MII_LINK[2] */
++		>;
++	};
++	pins_uart0: pins_uart0 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_UART0(103, UART0_I)	/* UART0_TXD */
++			RZN1_MUX_UART0(104, UART0_I)	/* UART0_RXD */
++		>;
++	};
++	pins_uart2: pins_uart2 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_UART2(105, UART2)	/* UART2_TXD */
++			RZN1_MUX_UART2(106, UART2)	/* UART2_RXD */
++			RZN1_MUX_UART2(107, UART2)	/* UART2_RTS_N */
++			RZN1_MUX_UART2(108, UART2)	/* UART2_CTS_N */
++		>;
++	};
++	pins_uart3: pins_uart3 {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_UART3(123, UART3)	/* UART3_TXD */
++			RZN1_MUX_UART3(124, UART3)	/* UART3_RXD */
++			RZN1_MUX_UART3(125, UART3)	/* UART3_RTS_N */
++		>;
++	};
++	pins_usb: pins_usb {
++		renesas,rzn1-pinmux-ids = <
++			RZN1_MUX_USB(119, USB)		/* USB_PPON[1] */
++			RZN1_MUX_USB(120, USB)		/* USB_OC[1] */
++			RZN1_MUX_USB(121, USB)		/* USB_PPON[2] */
++			RZN1_MUX_USB(122, USB)		/* USB_OC[2] */
++		>;
++	};
++};
++
++&can0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_can0>;
++};
++&can1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_can1>;
++};
++&eth0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_eth0>;
++};
++&eth1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_eth1>;
++};
++&eth2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_eth2>;
++};
++&eth3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_eth3>;
++};
++&eth4 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_eth4>;
++};
++&gpio1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_gpio1>;
++};
++&gpio2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_gpio2>;
++};
++&i2c1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_i2c1>;
++};
++&lcd {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_lcd>;
++};
++&mdio0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_mdio0>;
++};
++&mdio1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_mdio1>;
++};
++&nmi {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_nmi>;
++};
++&qspi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_qspi0>;
++};
++&refclk {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_refclk>;
++};
++&sdio0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_sdio0>;
++};
++&spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_spi0>;
++};
++&switch {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_switch>;
++};
++&uart0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_uart0>;
++};
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_uart2>;
++};
++&uart3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_uart3>;
++};
++&usb {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_usb>;
++};
++
++/* 
++ * this is the compressed Renesas Pinmux Web App data structure; this is
++ * used to allow uploading this file back into the web app, make some
++ * more changes and generate/save the DTS again. It is not used by linux
++ * in any way.
++ */
++#ifdef JSON_PRESET
++N4IgdghgtgpiBcIBKMwwM4XQAiQLQHoA5ARgBFsyYoB7bAIRogCcATEAGhAAcIBjANYQA5nEQwALAAYpnHjGYBLbgAsFEADboEAb
++RABhAIKk5RogCY5AUQAqACRLX7lrrbsBmJ3YleArHIBxAAUASQB5FxBg8M8uEPN9SIAZfTI5AFkycMcuTPDIonSQuQBFAGVQnOQr
++ADF9JIBpOTKssKqKkPaAdRCbfTs5AFVDJBsq4dHYkAmbHy5BsvoQAF0uYW5FGgB9SFhteFAATktEKwAXFXdsEKQSuRJzR1OL7CC7
++AE1cDBgz+/MANgQIEy+leHxI2GiYT+AHYgXkwmD3hCofd3CcQOcVOZrrd7r4MViITc7lwSL5PM8VBJcaSQOSfIgbDQAK58FS0/H+
++Km+TkAXzWGxo+x0MN8EhIMP+HDFEphMJl4slAA5FXLDmqSMqpJrlSRdeZde5dRJdb5ddLZVqFVblarbRqrYcdU79U7DU7jU7TU7z
++U7LUrDjbA/bA47xeYZGrI26I1IPXGvXGfXG/XGAxJI8HM1JQznw5mSC6IyRY4WE4Wk4WU4W04WM49s48848C+ZI9HHp2K+2q+2a+
++26+2G+Ym+YW+Y2+5i5n3GXzOjo+4++4B+5zb5fFLxxxNzC7ebV+5/tKj/8FWfVWeNUeYTrb/rb4bb8bb6bb4eJO4pRxbwrN3q4q7
++r4gEbiB5LSgB5L/uBIHAYBGq+EW5imkh8Ybsh0oSFKhwathd46vhUj6kRhpEcaRGmkR5pEVh8pSAqRGqkReHykWv4Sl+HASMcyqH
++KenGfiQEgCcJF6cVe/wkEGv5SYcqq+P8o6HPqinKYaikUhSu7/FpqG6euG4GYpHAoRIIEamZvjOr+imHIedmnnZ/5FnBvhSP8uEb
++h5uF0TCy7cfKq6yfJr6ecq77hYe4VYeS9ncXFsXWYx8qZhxX6PhIX7PllAWrl+765Z+X4CV+4lfleuU3ll0jpRKdU5bldWFVlxUi
++XV5USJVWWsdugVShR8r/FRQ3Re5z66VIYXuZF7k0fKd79TCJESna3GrXhEo2Vl0n6mZw2GvtXFIUpkEEqWyx8kAA
++#endif
+diff --git a/board/renesas/rzn1d400-db/Kconfig b/board/renesas/rzn1d400-db/Kconfig
+new file mode 100644
+index 0000000..530525f
+--- /dev/null
++++ b/board/renesas/rzn1d400-db/Kconfig
+@@ -0,0 +1,15 @@
++if TARGET_RENESAS_RZN1D400_DB
++
++config SYS_BOARD
++	default "rzn1d400-db"
++
++config SYS_VENDOR
++	default "renesas"
++
++config SYS_SOC
++	default "rzn1"
++
++config SYS_CONFIG_NAME
++	default "rzn1d400-db"
++
++endif
+diff --git a/board/renesas/rzn1d400-db/Makefile b/board/renesas/rzn1d400-db/Makefile
+new file mode 100644
+index 0000000..0b5527b
+--- /dev/null
++++ b/board/renesas/rzn1d400-db/Makefile
+@@ -0,0 +1,8 @@
++#
++# Copyright (C) 2016 Renesas Electronics Europe Ltd
++#
++# SPDX-License-Identifier: GPL-2.0
++#
++
++obj-y	:= rzn1d-db.o
++obj-y	+= ddr-async.o
+diff --git a/board/renesas/rzn1d400-db/ddr-async.c b/board/renesas/rzn1d400-db/ddr-async.c
+new file mode 100644
+index 0000000..75ba417
+--- /dev/null
++++ b/board/renesas/rzn1d400-db/ddr-async.c
+@@ -0,0 +1,148 @@
++/*
++ * RZ/N1 DDR Controller initialisation
++ *
++ * The DDR Controller register values for a specific DDR device, mode and
++ * frequency are generated using a Cadence tool.
++ *
++ * Copyright (C) 2015 Renesas Electronics Europe Ltd
++ *
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ */
++#include <common.h>
++#include "renesas/jedec_ddr3_2g_x16_1333h_500_cl8.h"
++
++u32 ddr_00_87_async[] = {
++	DENALI_CTL_00_DATA,
++	DENALI_CTL_01_DATA,
++	DENALI_CTL_02_DATA,
++	DENALI_CTL_03_DATA,
++	DENALI_CTL_04_DATA,
++	DENALI_CTL_05_DATA,
++	DENALI_CTL_06_DATA,
++	DENALI_CTL_07_DATA,
++	DENALI_CTL_08_DATA,
++	DENALI_CTL_09_DATA,
++
++	DENALI_CTL_10_DATA,
++	DENALI_CTL_11_DATA,
++	DENALI_CTL_12_DATA,
++	DENALI_CTL_13_DATA,
++	DENALI_CTL_14_DATA,
++	DENALI_CTL_15_DATA,
++	DENALI_CTL_16_DATA,
++	DENALI_CTL_17_DATA,
++	DENALI_CTL_18_DATA,
++	DENALI_CTL_19_DATA,
++
++	DENALI_CTL_20_DATA,
++	DENALI_CTL_21_DATA,
++	DENALI_CTL_22_DATA,
++	DENALI_CTL_23_DATA,
++	DENALI_CTL_24_DATA,
++	DENALI_CTL_25_DATA,
++	DENALI_CTL_26_DATA,
++	DENALI_CTL_27_DATA,
++	DENALI_CTL_28_DATA,
++	DENALI_CTL_29_DATA,
++
++	DENALI_CTL_30_DATA,
++	DENALI_CTL_31_DATA,
++	DENALI_CTL_32_DATA,
++	DENALI_CTL_33_DATA,
++	DENALI_CTL_34_DATA,
++	DENALI_CTL_35_DATA,
++	DENALI_CTL_36_DATA,
++	DENALI_CTL_37_DATA,
++	DENALI_CTL_38_DATA,
++	DENALI_CTL_39_DATA,
++
++	DENALI_CTL_40_DATA,
++	DENALI_CTL_41_DATA,
++	DENALI_CTL_42_DATA,
++	DENALI_CTL_43_DATA,
++	DENALI_CTL_44_DATA,
++	DENALI_CTL_45_DATA,
++	DENALI_CTL_46_DATA,
++	DENALI_CTL_47_DATA,
++	DENALI_CTL_48_DATA,
++	DENALI_CTL_49_DATA,
++
++	DENALI_CTL_50_DATA,
++	DENALI_CTL_51_DATA,
++	DENALI_CTL_52_DATA,
++	DENALI_CTL_53_DATA,
++	DENALI_CTL_54_DATA,
++	DENALI_CTL_55_DATA,
++	DENALI_CTL_56_DATA,
++	DENALI_CTL_57_DATA,
++	DENALI_CTL_58_DATA,
++	DENALI_CTL_59_DATA,
++
++	DENALI_CTL_60_DATA,
++	DENALI_CTL_61_DATA,
++	DENALI_CTL_62_DATA,
++	DENALI_CTL_63_DATA,
++	DENALI_CTL_64_DATA,
++	DENALI_CTL_65_DATA,
++	DENALI_CTL_66_DATA,
++	DENALI_CTL_67_DATA,
++	DENALI_CTL_68_DATA,
++	DENALI_CTL_69_DATA,
++
++	DENALI_CTL_70_DATA,
++	DENALI_CTL_71_DATA,
++	DENALI_CTL_72_DATA,
++	DENALI_CTL_73_DATA,
++	DENALI_CTL_74_DATA,
++	DENALI_CTL_75_DATA,
++	DENALI_CTL_76_DATA,
++	DENALI_CTL_77_DATA,
++	DENALI_CTL_78_DATA,
++	DENALI_CTL_79_DATA,
++
++	DENALI_CTL_80_DATA,
++	DENALI_CTL_81_DATA,
++	DENALI_CTL_82_DATA,
++	DENALI_CTL_83_DATA,
++	DENALI_CTL_84_DATA,
++	DENALI_CTL_85_DATA,
++	DENALI_CTL_86_DATA,
++	DENALI_CTL_87_DATA,
++	DENALI_CTL_88_DATA,
++	DENALI_CTL_89_DATA,
++
++	DENALI_CTL_90_DATA,
++	DENALI_CTL_91_DATA,
++	DENALI_CTL_92_DATA,
++};
++
++u32 ddr_350_374_async[] = {
++	DENALI_CTL_350_DATA,
++	DENALI_CTL_351_DATA,
++	DENALI_CTL_352_DATA,
++	DENALI_CTL_353_DATA,
++	DENALI_CTL_354_DATA,
++	DENALI_CTL_355_DATA,
++	DENALI_CTL_356_DATA,
++	DENALI_CTL_357_DATA,
++	DENALI_CTL_358_DATA,
++	DENALI_CTL_359_DATA,
++
++	DENALI_CTL_360_DATA,
++	DENALI_CTL_361_DATA,
++	DENALI_CTL_362_DATA,
++	DENALI_CTL_363_DATA,
++	DENALI_CTL_364_DATA,
++	DENALI_CTL_365_DATA,
++	DENALI_CTL_366_DATA,
++	DENALI_CTL_367_DATA,
++	DENALI_CTL_368_DATA,
++	DENALI_CTL_369_DATA,
++
++	DENALI_CTL_370_DATA,
++	DENALI_CTL_371_DATA,
++	DENALI_CTL_372_DATA,
++	DENALI_CTL_373_DATA,
++	DENALI_CTL_374_DATA,
++};
+diff --git a/board/renesas/rzn1d400-db/rzn1-board-pinmux.h b/board/renesas/rzn1d400-db/rzn1-board-pinmux.h
+new file mode 100755
+index 0000000..75f2edf
+--- /dev/null
++++ b/board/renesas/rzn1d400-db/rzn1-board-pinmux.h
+@@ -0,0 +1,376 @@
++﻿/*
++ * This file was autogenerated
++ * DO NOT EDIT
++ * (C) 2015-2016 Renesas Electronics Europe, LTD
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are met:
++ *
++ * 1. Redistributions of source code must retain the above copyright notice,
++ * this list of conditions and the following disclaimer.
++ *
++ * 2. Redistributions in binary form must reproduce the above copyright notice,
++ * this list of conditions and the following disclaimer in the documentation
++ * and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
++ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ * POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifndef __RZN1_BOARD_PINMUX_H__
++#define __RZN1_BOARD_PINMUX_H__
++/*
++ * AUTOGENERATED DO NOT EDIT
++ *
++ * Renesas RZ/N1D Demo Board
++ * This file only sets the pin function by default.
++ *
++ * You can override the default mux pullup/down and drive by
++ * defining the following macros in the board file before
++ * including this.
++ */
++
++#ifndef RZN1_MUX_DEFAULT
++#define RZN1_MUX_DEFAULT RZN1_MUX
++#endif
++
++#include "renesas/pinctrl-rzn1.h"
++
++#ifndef RZN1_MUX_CAN0
++#define RZN1_MUX_CAN0 RZN1_MUX_6MA
++#endif
++#ifndef RZN1_MUX_CAN1
++#define RZN1_MUX_CAN1 RZN1_MUX_6MA
++#endif
++#ifndef RZN1_MUX_ETH0
++#define RZN1_MUX_ETH0 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH1
++#define RZN1_MUX_ETH1 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH2
++#define RZN1_MUX_ETH2 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH3
++#define RZN1_MUX_ETH3 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_ETH4
++#define RZN1_MUX_ETH4 RZN1_MUX_PNONE_6MA
++#endif
++#ifndef RZN1_MUX_GPIO
++#define RZN1_MUX_GPIO RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_GPIO1
++#define RZN1_MUX_GPIO1 RZN1_MUX_GPIO
++#endif
++#ifndef RZN1_MUX_GPIO2
++#define RZN1_MUX_GPIO2 RZN1_MUX_GPIO
++#endif
++#ifndef RZN1_MUX_I2C1
++#define RZN1_MUX_I2C1 RZN1_MUX_12MA
++#endif
++#ifndef RZN1_MUX_LCD
++#define RZN1_MUX_LCD RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_MDIO
++#define RZN1_MUX_MDIO RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_MDIO0
++#define RZN1_MUX_MDIO0 RZN1_MUX_MDIO
++#endif
++#ifndef RZN1_MUX_MDIO1
++#define RZN1_MUX_MDIO1 RZN1_MUX_MDIO
++#endif
++#ifndef RZN1_MUX_NMI
++#define RZN1_MUX_NMI RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_QSPI0
++#define RZN1_MUX_QSPI0 RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_REFCLK
++#define RZN1_MUX_REFCLK RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_SDIO
++#define RZN1_MUX_SDIO RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_SDIO0
++#define RZN1_MUX_SDIO0 RZN1_MUX_SDIO
++#endif
++#ifndef RZN1_MUX_SPI
++#define RZN1_MUX_SPI RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_SPI0
++#define RZN1_MUX_SPI0 RZN1_MUX_SPI
++#endif
++#ifndef RZN1_MUX_SWITCH
++#define RZN1_MUX_SWITCH RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_UART0
++#define RZN1_MUX_UART0 RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_UART2
++#define RZN1_MUX_UART2 RZN1_MUX_PNONE
++#endif
++#ifndef RZN1_MUX_UART
++#define RZN1_MUX_UART RZN1_MUX_DEFAULT
++#endif
++#ifndef RZN1_MUX_UART3
++#define RZN1_MUX_UART3 RZN1_MUX_UART
++#endif
++#ifndef RZN1_MUX_USB
++#define RZN1_MUX_USB RZN1_MUX_DEFAULT
++#endif
++
++#define RZN1_MUX_PERIPH_BIT	24
++
++/*
++ * These numbers are arbitrary and do not correspond to anything
++ * on the hardware, they are for the application convenience only
++ * and *will* change if the pinmux is regenerated by the Webapp.
++ */
++enum {
++	RZN1_P_CAN0 = 0, RZN1_P_CAN1, RZN1_P_ETH0, RZN1_P_ETH1, RZN1_P_ETH2, RZN1_P_ETH3,
++	RZN1_P_ETH4, RZN1_P_GPIO1, RZN1_P_GPIO2, RZN1_P_I2C1, RZN1_P_LCD, RZN1_P_MDIO0,
++	RZN1_P_MDIO1, RZN1_P_NMI, RZN1_P_QSPI0, RZN1_P_REFCLK, RZN1_P_SDIO0, RZN1_P_SPI0,
++	RZN1_P_SWITCH, RZN1_P_UART0, RZN1_P_UART2, RZN1_P_UART3, RZN1_P_USB, 
++};
++
++/*
++ * A peripheral number is also encoded in these constants to
++ * help parsing in case your code wishes to do pinmux selectively
++ */
++#define _RZP(_P, _M) ((_M) | (RZN1_##_P << RZN1_MUX_PERIPH_BIT))
++
++static const uint32_t rzn1_pinmux_map[] = {
++	_RZP(P_CAN0, RZN1_MUX_CAN0(162, CAN)),			/* CAN0_TXD */
++	_RZP(P_CAN0, RZN1_MUX_CAN0(163, CAN)),			/* CAN0_RXD */
++	_RZP(P_CAN1, RZN1_MUX_CAN1(109, CAN)),			/* CAN1_TXD */
++	_RZP(P_CAN1, RZN1_MUX_CAN1(110, CAN)),			/* CAN1_RXD */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(0, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_TXCLK */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(1, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_TXD[0] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(2, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_TXD[1] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(3, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_TXD[2] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(4, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_TXD[3] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(5, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_TXEN */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(6, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_RXCLK */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(7, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_RXD[0] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(8, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_RXD[1] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(9, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_RXD[2] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(10, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_RXD[3] */
++	_RZP(P_ETH0, RZN1_MUX_ETH0(11, CLK_ETH_MII_RGMII_RMII)),	/* ETH0_RXDV */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(12, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_TXCLK */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(13, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_TXD[0] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(14, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_TXD[1] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(15, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_TXD[2] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(16, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_TXD[3] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(17, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_TXEN */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(18, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_RXCLK */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(19, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_RXD[0] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(20, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_RXD[1] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(21, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_RXD[2] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(22, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_RXD[3] */
++	_RZP(P_ETH1, RZN1_MUX_ETH1(23, CLK_ETH_MII_RGMII_RMII)),	/* ETH1_RXDV */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(24, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_TXCLK */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(25, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_TXD[0] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(26, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_TXD[1] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(27, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_TXD[2] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(28, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_TXD[3] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(29, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_TXEN */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(30, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_RXCLK */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(31, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_RXD[0] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(32, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_RXD[1] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(33, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_RXD[2] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(34, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_RXD[3] */
++	_RZP(P_ETH2, RZN1_MUX_ETH2(35, CLK_ETH_MII_RGMII_RMII)),	/* ETH2_RXDV */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(36, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_TXCLK */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(37, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_TXD[0] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(38, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_TXD[1] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(39, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_TXD[2] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(40, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_TXD[3] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(41, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_TXEN */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(42, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_RXCLK */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(43, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_RXD[0] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(44, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_RXD[1] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(45, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_RXD[2] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(46, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_RXD[3] */
++	_RZP(P_ETH3, RZN1_MUX_ETH3(47, CLK_ETH_MII_RGMII_RMII)),	/* ETH3_RXDV */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(48, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_TXCLK */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(49, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_TXD[0] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(50, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_TXD[1] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(51, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_TXD[2] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(52, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_TXD[3] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(53, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_TXEN */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(54, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_RXCLK */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(55, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_RXD[0] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(56, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_RXD[1] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(57, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_RXD[2] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(58, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_RXD[3] */
++	_RZP(P_ETH4, RZN1_MUX_ETH4(59, CLK_ETH_MII_RGMII_RMII)),	/* ETH4_RXDV */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(83, GPIO)),		/* GPIO1B[14] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(84, GPIO)),		/* GPIO1B[15] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(85, GPIO)),		/* GPIO1B[16] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(86, GPIO)),		/* GPIO1B[17] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(87, GPIO)),		/* GPIO1B[18] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(88, GPIO)),		/* GPIO1B[19] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(89, GPIO)),		/* GPIO1B[20] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(90, GPIO)),		/* GPIO1B[21] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(91, GPIO)),		/* GPIO1B[22] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(92, GPIO)),		/* GPIO1B[23] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(93, GPIO)),		/* GPIO1B[24] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(94, GPIO)),		/* Eth PHY Reset (GPIO1B[25]) */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(117, GPIO)),		/* GPIO1A[27] */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(118, GPIO)),		/* Eth3 IRQ (GPIO1A[28]) */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(154, GPIO)),		/* MDC PHY1 GPIO (GPIO1B[30]) */
++	_RZP(P_GPIO1, RZN1_MUX_GPIO1(155, GPIO)),		/* MDIO PHY1 GPIO (GPIO1B[31]) */
++	_RZP(P_GPIO2, RZN1_MUX_GPIO2(126, GPIO)),		/* Eth2 IRQ (GPIO2A[4]) */
++	_RZP(P_GPIO2, RZN1_MUX_GPIO2(146, GPIO)),		/* Eth1 IRQ (GPIO2A[24]) */
++	_RZP(P_GPIO2, RZN1_MUX_GPIO2(147, GPIO)),		/* Eth4 IRQ (GPIO2A[25]) */
++	_RZP(P_GPIO2, RZN1_MUX_GPIO2(148, GPIO)),		/* Touch IRQ (GPIO2A[26]) */
++	_RZP(P_GPIO2, RZN1_MUX_GPIO2(149, GPIO)),		/* Eth5 IRQ (GPIO2A[27]) */
++	_RZP(P_I2C1, RZN1_MUX_I2C1(115, I2C)),			/* I2C1_SCL */
++	_RZP(P_I2C1, RZN1_MUX_I2C1(116, I2C)),			/* I2C1_SDA */
++	_RZP(P_LCD, RZN1_MUX_LCD(62, LCD)),			/* LCD_R[1] */
++	_RZP(P_LCD, RZN1_MUX_LCD(63, LCD)),			/* LCD_G[1] */
++	_RZP(P_LCD, RZN1_MUX_LCD(64, LCD)),			/* LCD_B[1] */
++	_RZP(P_LCD, RZN1_MUX_LCD(65, LCD)),			/* LCD_R[2] */
++	_RZP(P_LCD, RZN1_MUX_LCD(66, LCD)),			/* LCD_G[2] */
++	_RZP(P_LCD, RZN1_MUX_LCD(67, LCD)),			/* LCD_B[2] */
++	_RZP(P_LCD, RZN1_MUX_LCD(68, LCD)),			/* LCD_R[3] */
++	_RZP(P_LCD, RZN1_MUX_LCD(69, LCD)),			/* LCD_G[3] */
++	_RZP(P_LCD, RZN1_MUX_LCD(70, LCD)),			/* LCD_B[3] */
++	_RZP(P_LCD, RZN1_MUX_LCD(71, LCD)),			/* LCD_R[4] */
++	_RZP(P_LCD, RZN1_MUX_LCD(72, LCD)),			/* LCD_G[4] */
++	_RZP(P_LCD, RZN1_MUX_LCD(73, LCD)),			/* LCD_B[4] */
++	_RZP(P_LCD, RZN1_MUX_LCD(127, LCD)),			/* LCD_PWM[0] */
++	_RZP(P_LCD, RZN1_MUX_LCD(128, LCD)),			/* LCD_PCLK */
++	_RZP(P_LCD, RZN1_MUX_LCD(129, LCD)),			/* LCD_HSYNC */
++	_RZP(P_LCD, RZN1_MUX_LCD(130, LCD)),			/* LCD_VSYNC */
++	_RZP(P_LCD, RZN1_MUX_LCD(131, LCD)),			/* LCD_DE */
++	_RZP(P_LCD, RZN1_MUX_LCD(132, LCD)),			/* LCD_PE */
++	_RZP(P_LCD, RZN1_MUX_LCD(133, LCD)),			/* LCD_PWM[1] */
++	_RZP(P_LCD, RZN1_MUX_LCD(134, LCD)),			/* LCD_R[5] */
++	_RZP(P_LCD, RZN1_MUX_LCD(135, LCD)),			/* LCD_R[0] */
++	_RZP(P_LCD, RZN1_MUX_LCD(136, LCD)),			/* LCD_G[0] */
++	_RZP(P_LCD, RZN1_MUX_LCD(137, LCD)),			/* LCD_B[0] */
++	_RZP(P_LCD, RZN1_MUX_LCD(138, LCD)),			/* LCD_R[6] */
++	_RZP(P_LCD, RZN1_MUX_LCD(139, LCD)),			/* LCD_G[6] */
++	_RZP(P_LCD, RZN1_MUX_LCD(140, LCD)),			/* LCD_B[6] */
++	_RZP(P_LCD, RZN1_MUX_LCD(141, LCD)),			/* LCD_R[7] */
++	_RZP(P_LCD, RZN1_MUX_LCD(142, LCD)),			/* LCD_G[7] */
++	_RZP(P_LCD, RZN1_MUX_LCD(143, LCD)),			/* LCD_B[7] */
++	_RZP(P_LCD, RZN1_MUX_LCD(144, LCD)),			/* LCD_G[5] */
++	_RZP(P_LCD, RZN1_MUX_LCD(145, LCD)),			/* LCD_B[5] */
++	_RZP(P_MDIO0, RZN1_MUX_MDIO0(150, ETH_MDIO)),		/* MDIO0_MDC */
++	_RZP(P_MDIO0, RZN1_MUX_MDIO0(151, ETH_MDIO)),		/* MDIO0_MDIO */
++	_RZP(P_MDIO0, RZN1_MUX_MDIO0(170, MDIO_MUX_MAC0)),	/* MDIO0_MUX_MAC0 */
++	_RZP(P_MDIO1, RZN1_MUX_MDIO1(152, ETH_MDIO)),		/* MDIO1_MDC */
++	_RZP(P_MDIO1, RZN1_MUX_MDIO1(153, ETH_MDIO)),		/* MDIO1_MDIO */
++	_RZP(P_MDIO1, RZN1_MUX_MDIO1(171, MDIO_MUX_SWITCH)),	/* MDIO1_MUX_SWITCH */
++	_RZP(P_NMI, RZN1_MUX_NMI(111, ETHERCAT)),		/* NMI_CORTEXM[3] */
++	_RZP(P_QSPI0, RZN1_MUX_QSPI0(74, QSPI)),		/* QSPI0_CS_N[0] */
++	_RZP(P_QSPI0, RZN1_MUX_QSPI0(75, QSPI)),		/* QSPI0_IO[3] */
++	_RZP(P_QSPI0, RZN1_MUX_QSPI0(76, QSPI)),		/* QSPI0_IO[2] */
++	_RZP(P_QSPI0, RZN1_MUX_QSPI0(77, QSPI)),		/* QSPI0_IO[1] */
++	_RZP(P_QSPI0, RZN1_MUX_QSPI0(78, QSPI)),		/* QSPI0_IO[0] */
++	_RZP(P_QSPI0, RZN1_MUX_QSPI0(79, QSPI)),		/* QSPI0_CLK */
++	_RZP(P_REFCLK, RZN1_MUX_REFCLK(60, CLK_ETH_MII_RGMII_RMII)),	/* REFCLK_RGMII */
++	_RZP(P_REFCLK, RZN1_MUX_REFCLK(61, CLK_ETH_NAND)),	/* REFCLK_MII */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(95, SDIO)),		/* SDIO0_CMD */
++	_RZP(P_SDIO0, RZN1_MUX_12MA(96, SDIO)),			/* SDIO0_CLK */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(97, SDIO)),		/* SDIO0_IO[0] */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(98, SDIO)),		/* SDIO0_IO[1] */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(99, SDIO)),		/* SDIO0_IO[2] */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(100, SDIO)),		/* SDIO0_IO[3] */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(101, SDIO_E)),		/* SDIO0_CD_N */
++	_RZP(P_SDIO0, RZN1_MUX_SDIO0(102, SDIO_E)),		/* SDIO0_WP */
++	_RZP(P_SPI0, RZN1_MUX_SPI0(156, SPI0_M)),		/* SPI0_CLK */
++	_RZP(P_SPI0, RZN1_MUX_SPI0(157, SPI0_M)),		/* SPI0_MOSI */
++	_RZP(P_SPI0, RZN1_MUX_SPI0(158, SPI0_M)),		/* SPI0_MISO */
++	_RZP(P_SPI0, RZN1_MUX_SPI0(159, SPI0_M)),		/* SPI0_SS_N[0] */
++	_RZP(P_SWITCH, RZN1_MUX_SWITCH(80, MAC_MTIP_SWITCH)),	/* SWITCH_MII_LINK[5] */
++	_RZP(P_SWITCH, RZN1_MUX_SWITCH(81, MAC_MTIP_SWITCH)),	/* SWITCH_MII_LINK[4] */
++	_RZP(P_SWITCH, RZN1_MUX_SWITCH(82, MAC_MTIP_SWITCH)),	/* SWITCH_MII_LINK[3] */
++	_RZP(P_SWITCH, RZN1_MUX_SWITCH(114, MAC_MTIP_SWITCH)),	/* SWITCH_MII_LINK[2] */
++	_RZP(P_UART0, RZN1_MUX_UART0(103, UART0_I)),		/* UART0_TXD */
++	_RZP(P_UART0, RZN1_MUX_UART0(104, UART0_I)),		/* UART0_RXD */
++	_RZP(P_UART2, RZN1_MUX_UART2(105, UART2)),		/* UART2_TXD */
++	_RZP(P_UART2, RZN1_MUX_UART2(106, UART2)),		/* UART2_RXD */
++	_RZP(P_UART2, RZN1_MUX_UART2(107, UART2)),		/* UART2_RTS_N */
++	_RZP(P_UART2, RZN1_MUX_UART2(108, UART2)),		/* UART2_CTS_N */
++	_RZP(P_UART3, RZN1_MUX_UART3(123, UART3)),		/* UART3_TXD */
++	_RZP(P_UART3, RZN1_MUX_UART3(124, UART3)),		/* UART3_RXD */
++	_RZP(P_UART3, RZN1_MUX_UART3(125, UART3)),		/* UART3_RTS_N */
++	_RZP(P_USB, RZN1_MUX_USB(119, USB)),			/* USB_PPON[1] */
++	_RZP(P_USB, RZN1_MUX_USB(120, USB)),			/* USB_OC[1] */
++	_RZP(P_USB, RZN1_MUX_USB(121, USB)),			/* USB_PPON[2] */
++	_RZP(P_USB, RZN1_MUX_USB(122, USB)),			/* USB_OC[2] */
++	0L, /* terminator */
++};
++/*
++ * Sample function for setting the pinmux. Pass -1 for setting /all/
++ * the pins, pass any of the RZN1_P_xxx for setting just that one set
++ * returns the number of pins that have been set.
++ * There is also a variant where you can pass multiple peripherals as
++ * a bitmask.
++ */
++#ifdef USE_DEFAULT_PINMUX
++/* Functions are marked 'unused' to prevent warnings on modern GCC */
++#if defined(__GNUC__)
++#define __unused __attribute__((unused))
++#elif !defined(__unused)
++#define __unused
++#endif
++static int rzn1_board_pinmux(int periph /* = -1 */) __unused;
++static int rzn1_board_pinmux(int periph /* = -1 */) {
++ int i, cnt = 0;
++ for (i = 0; rzn1_pinmux_map[i]; i++)
++  if (periph == -1 ||
++      (rzn1_pinmux_map[i] >> RZN1_MUX_PERIPH_BIT) == (uint32_t)periph) {
++       rzn1_pinmux_set(rzn1_pinmux_map[i]);
++       cnt++;
++ }
++ return cnt;
++}
++static int rzn1_board_pinmux_mask(uint32_t periph_mask /* = -1 */) __unused;
++static int rzn1_board_pinmux_mask(uint32_t periph_mask /* = -1 */) {
++ int i, cnt = 0;
++ for (i = 0; rzn1_pinmux_map[i]; i++)
++  if (periph_mask & (1 << (rzn1_pinmux_map[i] >> RZN1_MUX_PERIPH_BIT))) {
++   rzn1_pinmux_set(rzn1_pinmux_map[i]);
++   cnt++;
++  }
++ return cnt;
++}
++#endif
++
++/* 
++ * this is the compressed Renesas Pinmux Web App data structure; this is
++ * used to allow uploading this file back into the web app, make some
++ * more changes and generate/save the DTS again. It is not used by linux
++ * in any way.
++ */
++#ifdef JSON_PRESET
++N4IgdghgtgpiBcIBKMwwM4XQAiQLQHoA5ARgBFsyYoB7bAIRogCcATEAGhAAcIBjANYQA5nEQwALAAYpnHjGYBLbgAsFEADboEAb
++RABhAIKk5RogCY5AUQAqACRLX7lrrbsBmJ3YleArHIBxAAUASQB5FxBg8M8uEPN9SIAZfTI5AFkycMcuTPDIonSQuQBFAGVQnOQr
++ADF9JIBpOTKssKqKkPaAdRCbfTs5AFVDJBsq4dHYkAmbHy5BsvoQAF0uYW5FGgB9SFhteFAATktEKwAXFXdsEKQSuRJzR1OL7CC7
++AE1cDBgz+/MANgQIEy+leHxI2GiYT+AHYgXkwmD3hCofd3CcQOcVOZrrd7r4MViITc7lwSL5PM8VBJcaSQOSfIgbDQAK58FS0/H+
++Km+TkAXzWGxo+x0MN8EhIMP+HDFEphMJl4slAA5FXLDmqSMqpJrlSRdeZde5dRJdb5ddLZVqFVblarbRqrYcdU79U7DU7jU7TU7z
++U7LUrDjbA/bA47xeYZGrI26I1IPXGvXGfXG/XGAxJI8HM1JQznw5mSC6IyRY4WE4Wk4WU4W04WM49s48848C+ZI9HHp2K+2q+2a+
++26+2G+Ym+YW+Y2+5i5n3GXzOjo+4++4B+5zb5fFLxxxNzC7ebV+5/tKj/8FWfVWeNUeYTrb/rb4bb8bb6bb4eJO4pRxbwrN3q4q7
++r4gEbiB5LSgB5L/uBIHAYBGq+EW5imkh8Ybsh0oSFKhwathd46vhUj6kRhpEcaRGmkR5pEVh8pSAqRGqkReHykWv4Sl+HASMcyqH
++KenGfiQEgCcJF6cVe/wkEGv5SYcqq+P8o6HPqinKYaikUhSu7/FpqG6euG4GYpHAoRIIEamZvjOr+imHIedmnnZ/5FnBvhSP8uEb
++h5uF0TCy7cfKq6yfJr6ecq77hYe4VYeS9ncXFsXWYx8qZhxX6PhIX7PllAWrl+765Z+X4CV+4lfleuU3ll0jpRKdU5bldWFVlxUi
++XV5USJVWWsdugVShR8r/FRQ3Re5z66VIYXuZF7k0fKd79TCJESna3GrXhEo2Vl0n6mZw2GvtXFIUpkEEqWyx8kAA
++#endif
++
++#endif /* __RZN1_BOARD_PINMUX_H__ */
+diff --git a/board/renesas/rzn1d400-db/rzn1d-db.c b/board/renesas/rzn1d400-db/rzn1d-db.c
+new file mode 100644
+index 0000000..019236e
+--- /dev/null
++++ b/board/renesas/rzn1d400-db/rzn1d-db.c
+@@ -0,0 +1,482 @@
++/*
++ * Renesas RZ/N1D-400 Demo Board, can be used with RZ/N1 Extension Board
++ *
++ * (C) Copyright 2016 Renesas Electronics Europe Limited
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ *
++ */
++/*
++ * WARNING! All hardware information (device and board) indexes start at 1,
++ * whereas all software indexes start at 0. Everything in this file refers
++ * to the software indexes.
++ */
++
++#include <common.h>
++#include <miiphy.h>
++#include <netdev.h>
++#include <asm/io.h>
++#include <asm/gpio.h>
++#include <dm.h>
++#include <fpga.h>
++#include <lattice.h>
++#include <led.h>
++#include <linux/sizes.h>
++#include <malloc.h>
++#include <sdhci.h>
++#include <spl.h>
++#include <usb.h>
++#include "renesas/rzn1-memory-map.h"
++#include "renesas/rzn1-sysctrl.h"
++#include "renesas/rzn1-utils.h"
++#include "renesas/rzn1-clocks.h"
++#include "renesas/pinctrl-rzn1.h"
++#define USE_DEFAULT_PINMUX
++#include "rzn1-board-pinmux.h"
++#include "cadence_ddr_ctrl.h"
++
++DECLARE_GLOBAL_DATA_PTR;
++
++int board_early_init_f(void)
++{
++	return 0;
++}
++
++/* Called early during device initialisation */
++void rzn1_setup_pinmux(void)
++{
++	/* Set all pin mux and drive stength to defaults for this board */
++	rzn1_board_pinmux(-1);
++
++	/*
++	 * This is special 'virtual' pins for the MDIO multiplexing.
++	 * The default sets MDIO1 control to the 5-port Switch, but U-Boot
++	 * doesn't have a driver for this, hence MDIO1 is controlled by GMAC1
++	 */
++	rzn1_pinmux_set(RZN1_MUX_MDIO(RZN1_MDIO_BUS1, MDIO_MUX_MAC1));
++}
++
++#if defined(RZN1_ENABLE_USBF) && !defined(CONFIG_SPL_BUILD)
++/* Configure board specific clocks for the USB blocks */
++int board_usb_init(int index, enum usb_init_type init)
++{
++	/* Configure device clocks, etc */
++	return rzn1_usb_init(index, init);
++}
++#endif
++
++static int set_led(const char *name, int val)
++{
++	struct udevice *dev;
++	int ret;
++
++	ret = led_get_by_label(name, &dev);
++	if (ret)
++		return ret;
++
++	return led_set_on(dev, val);
++}
++
++int rzn1_ctrl(void)
++{
++#if defined(RZN1_ENABLE_I2C)
++	/*
++	 * Switch I2C master for the EEPROM from the FTDI device to the RZ/N1.
++	 * The order is important as we want to avoid two masters connected at
++	 * the same time.
++	 * NOTE: ctrl0 is marked as ACTIVE_LOW in the dts
++	 */
++	/* Pretend the ctrl pins are leds. It works... */
++	set_led("ctrl1", 0);
++	set_led("ctrl2", 0);
++	set_led("ctrl0", 0);
++#endif
++
++	return 0;
++}
++
++#if defined(CONFIG_FPGA) && !defined(CONFIG_SPL_BUILD)
++#define CPLD_TDO_PIN	88
++#define CPLD_TMS_PIN	89
++#define CPLD_TDI_PIN	90
++#define CPLD_TCK_PIN	91
++static void rzn1_jtag_init(void)
++{
++	/* Uses PMOD3 pins as GPIOs - that's the default setting.
++	 * PMOD3 pin   GPIO-No   JTAG connector
++	 * CN4 pin 1     88      TDO on CN3 pin 6
++	 * CN4 pin 2     89      TMS on CN3 pin 5
++	 * CN4 pin 3     90      TDI on CN3 pin 4
++	 * CN4 pin 4     91      TCK on CN3 pin 3
++	 */
++	nondm_gpio_request(CPLD_TDO_PIN, "tdo");
++	nondm_gpio_direction_input(CPLD_TDO_PIN);
++	nondm_gpio_request(CPLD_TMS_PIN, "tms");
++	nondm_gpio_direction_output(CPLD_TMS_PIN, 1);
++	nondm_gpio_request(CPLD_TDI_PIN, "tdi");
++	nondm_gpio_direction_output(CPLD_TDI_PIN, 0);
++	nondm_gpio_request(CPLD_TCK_PIN, "tck");
++	nondm_gpio_direction_output(CPLD_TCK_PIN, 0);
++}
++
++static void rzn1_fpga_jtag_set_tdi(int value)
++{
++	nondm_gpio_set_value(CPLD_TDI_PIN, value);
++}
++
++static void rzn1_fpga_jtag_set_tms(int value)
++{
++	nondm_gpio_set_value(CPLD_TMS_PIN, value);
++}
++
++static void rzn1_fpga_jtag_set_tck(int value)
++{
++	nondm_gpio_set_value(CPLD_TCK_PIN, value);
++}
++
++static int rzn1_fpga_jtag_get_tdo(void)
++{
++	return nondm_gpio_get_value(CPLD_TDO_PIN);
++}
++
++lattice_board_specific_func rzn1_fpga_fns = {
++	rzn1_jtag_init,
++	rzn1_fpga_jtag_set_tdi,
++	rzn1_fpga_jtag_set_tms,
++	rzn1_fpga_jtag_set_tck,
++	rzn1_fpga_jtag_get_tdo
++};
++
++Lattice_desc rzn1_fpga = {
++	Lattice_XP2,		/* XO2 behaves the same as XP2 */
++	lattice_jtag_mode,
++	65535,
++	(void *) &rzn1_fpga_fns,
++	NULL,
++	0,
++	"LCMXO2-256HC"
++};
++
++int rzn1_fpga_init(void)
++{
++	fpga_init();
++	fpga_add(fpga_lattice, &rzn1_fpga);
++
++	return 0;
++}
++#endif	/* defined(CONFIG_FPGA) */
++
++int board_init(void)
++{
++#if defined(RZN1_ENABLE_QSPI)
++	/* Enable QSPI */
++	rzn1_clk_set_gate(RZN1_CLK_QSPI0_ID, 1);
++	rzn1_clk_set_gate(RZN1_HCLK_QSPI0_ID, 1);
++#endif
++
++#if defined(RZN1_ENABLE_I2C) && !defined(CONFIG_SPL_BUILD)
++	rzn1_clk_set_gate(RZN1_HCLK_I2C1_ID, 1);
++#endif
++
++#if defined(RZN1_ENABLE_SDHC) && !defined(CONFIG_SPL_BUILD)
++	/* Enable SDHC0 */
++	rzn1_clk_set_gate(RZN1_CLK_SDIO0_ID, 1);
++	rzn1_clk_set_gate(RZN1_HCLK_SDIO0_ID, 1);
++	rzn1_clk_reset(RZN1_HCLK_SDIO0_ID);
++#endif
++
++#if defined(RZN1_ENABLE_GPIO)
++	/* Enable GPIO clock */
++	rzn1_clk_set_gate(RZN1_HCLK_GPIO0_ID, 1);
++	rzn1_clk_set_gate(RZN1_HCLK_GPIO1_ID, 1);
++	rzn1_clk_set_gate(RZN1_HCLK_GPIO2_ID, 1);
++#endif
++
++#if defined(RZN1_ENABLE_USBF) && !defined(CONFIG_SPL_BUILD)
++	board_usb_init(0, USB_INIT_DEVICE);
++#endif
++
++#if defined(CONFIG_ARMV7_NONSEC) && defined(CONFIG_ARMV7_NONSEC_AT_BOOT)
++	/* Change to non-secure mode now */
++	armv7_init_nonsec();
++#endif
++
++#if defined(CONFIG_FPGA) && !defined(CONFIG_SPL_BUILD)
++	rzn1_fpga_init();
++#endif
++
++	return 0;
++}
++
++int board_late_init(void)
++{
++#if defined(RZN1_ENABLE_I2C) && !defined(CONFIG_SPL_BUILD)
++	/*
++	 * Do any I2C here, not board_init(). When board_init() runs, U-Boot has
++	 * not setup the UART properly so any I2C error that results in an error
++	 * message being printed out will result in a data abort.
++	 */
++	rzn1_ctrl();
++#endif
++
++	return 0;
++}
++
++
++extern u32 ddr_00_87_async[];
++extern u32 ddr_350_374_async[];
++
++void rzn1_ddr3_single_bank(void *ddr_ctrl_base)
++{
++	/* CS0 */
++	cdns_ddr_set_mr1(ddr_ctrl_base, 0,
++		MR1_ODT_IMPEDANCE_60_OHMS,
++		MR1_DRIVE_STRENGTH_40_OHMS);
++	cdns_ddr_set_mr2(ddr_ctrl_base, 0,
++		MR2_DYNAMIC_ODT_OFF,
++		MR2_SELF_REFRESH_TEMP_EXT);
++
++	/* ODT_WR_MAP_CS0 = 1, ODT_RD_MAP_CS0 = 0 */
++	cdns_ddr_set_odt_map(ddr_ctrl_base, 0, 0x0100);
++}
++
++int dram_init(void)
++{
++#if defined(CONFIG_CADENCE_DDR_CTRL)
++	ddr_phy_init(RZN1_DDR3_SINGLE_BANK);
++
++	/* Override DDR PHY related settings */
++	ddr_350_374_async[351 - 350] = 0x001e0000;
++	ddr_350_374_async[352 - 350] = 0x1e680000;
++	ddr_350_374_async[353 - 350] = 0x02000020;
++	ddr_350_374_async[354 - 350] = 0x02000200;
++	ddr_350_374_async[355 - 350] = 0x00000c30;
++	ddr_350_374_async[356 - 350] = 0x00009808;
++	ddr_350_374_async[357 - 350] = 0x020a0706;
++	ddr_350_374_async[372 - 350] = 0x01000000;
++
++	rzn1_ddr_ctrl_init(ddr_00_87_async, ddr_350_374_async,
++			   CONFIG_SYS_SDRAM_SIZE);
++
++	rzn1_ddr3_single_bank((void *)RZN1_DDR_BASE);
++	cdns_ddr_set_diff_cs_delays((void *)RZN1_DDR_BASE, 2, 7, 2, 2);
++	cdns_ddr_set_same_cs_delays((void *)RZN1_DDR_BASE, 0, 7, 0, 0);
++	cdns_ddr_set_odt_times((void *)RZN1_DDR_BASE, 5, 6, 6, 0, 4);
++	cdns_ddr_ctrl_start((void *)RZN1_DDR_BASE);
++
++	ddr_phy_enable_wl();
++
++#if defined(CONFIG_CADENCE_DDR_CTRL_ENABLE_ECC)
++	/*
++	 * Any read before a write will trigger an ECC un-correctable error,
++	 * causing a data abort. However, this is also true for any read with a
++	 * size less than the AXI bus width. So, the only sensible solution is
++	 * to write to all of DDR now and take the hit...
++	 */
++	memset((void *)RZN1_V_DDR_BASE, 0xff, CONFIG_SYS_SDRAM_SIZE);
++
++	/*
++	 * Note: The call to get_ram_size() below checks to see what memory is
++	 * actually there, but it reads before writing which would also trigger
++	 * an ECC un-correctable error if we don't write to all of DDR.
++	 */
++#endif
++	gd->ram_size = get_ram_size((void *)CONFIG_SYS_SDRAM_BASE,
++					    CONFIG_SYS_SDRAM_SIZE);
++#endif
++
++	return 0;
++}
++
++#if defined(RZN1_ENABLE_ETHERNET)
++/* RIN Ether Accessory (Switch Control) regs */
++#define MODCTRL				0x8
++#define MT5PT_SWITCH_UPSTREAM_PORT	4
++
++/*
++ * RIN RGMII/RMII Converter and switch setup.
++ * Called when DW ethernet determines the link speed
++ */
++int phy_adjust_link_notifier(struct phy_device *phy)
++{
++#ifdef CONFIG_DM_ETH
++	struct udevice *dev = phy->dev;
++	struct eth_pdata *pdata = dev_get_platdata(dev);
++	int gmac0 = pdata->iobase == RZN1_GMAC0_BASE ? 1 : 0;
++#else
++	struct eth_device *eth = phy->dev;
++	int gmac0 = eth->index == 0 ? 1 : 0;
++#endif
++
++	if (gmac0) {
++		/* GMAC0 can only be connected to RGMII/RMII Converter 0 */
++		rzn1_rgmii_rmii_conv_speed(0, phy->duplex, phy->speed);
++	} else {
++		int port;
++
++		/* GMAC1 goes via the 5-port switch */
++		/* All ports are enabled on the switch, but U-Boot only supports
++		 * a single PHY attached to it. Since we have no idea which port
++		 * the PHY is actually being used with, we update all ports.
++		 */
++		for (port = 0; port < 4; port++) {
++			rzn1_rgmii_rmii_conv_speed(4 - port, phy->duplex, phy->speed);
++			rzn1_switch_setup_port_speed(port, phy->speed, 1);
++		}
++	}
++
++	return 0;
++}
++
++static int rzn1_board_eth_init(void)
++{
++	int ret = 0;
++
++	rzn1_rin_init();
++
++	/* Setup RGMII/RMII Converters */
++	rzn1_rgmii_rmii_conv_setup(0, PHY_INTERFACE_MODE_RGMII_ID, 0);
++	rzn1_rgmii_rmii_conv_setup(1, PHY_INTERFACE_MODE_RGMII_ID, 0);
++	rzn1_rgmii_rmii_conv_setup(2, PHY_INTERFACE_MODE_RGMII_ID, 0);
++	rzn1_rgmii_rmii_conv_setup(3, PHY_INTERFACE_MODE_MII, 1);
++	rzn1_rgmii_rmii_conv_setup(4, PHY_INTERFACE_MODE_MII, 1);
++
++	/* RIN: Mode Control - GMAC1 on all Switch ports */
++	rzn1_rin_prot_writel(0x13, MODCTRL);
++
++	rzn1_mt5pt_switch_init();
++
++	/* Upstream port is always 1Gbps */
++	rzn1_switch_setup_port_speed(MT5PT_SWITCH_UPSTREAM_PORT, SPEED_1000, 1);
++
++	rzn1_rin_reset_clks();
++
++#ifdef RZN1_APPLY_ETH_PHY_RESET_PULSE
++	struct gpio_desc reset_gpio = {};
++	int node;
++
++	/* The PHY reset pin is in the 5-port switch DT node because the PHYs
++	 * are connected to the switch and not to the GMAC. */
++	node = fdt_node_offset_by_compatible(gd->fdt_blob, 0, "mtip,5pt_switch");
++	if (node < 0)
++		return node;
++
++	ret = gpio_request_by_name_nodev(gd->fdt_blob, node, "phy-reset-gpios", 0,
++				 &reset_gpio, GPIOD_IS_OUT);
++	if (ret)
++		return ret;
++
++	/* reset the phy */
++	ret = dm_gpio_set_value(&reset_gpio, 0);
++	if (ret)
++		return ret;
++
++	mdelay(15);
++
++	ret = dm_gpio_set_value(&reset_gpio, 1);
++	if (ret)
++		return ret;
++#endif
++
++	/* Enable Ethernet GMAC0 (only used on EB board) */
++	rzn1_clk_set_gate(RZN1_HCLK_GMAC0_ID, 1);
++	rzn1_clk_reset(RZN1_HCLK_GMAC0_ID);
++
++	/* Enable Ethernet GMAC1 */
++	rzn1_clk_set_gate(RZN1_HCLK_GMAC1_ID, 1);
++	rzn1_clk_reset(RZN1_HCLK_GMAC1_ID);
++
++	return ret;
++}
++
++int board_eth_init(bd_t *bis)
++{
++	int ret;
++	u32 if_type;
++
++	ret = rzn1_board_eth_init();
++	if (ret)
++		return ret;
++
++	/* Enable Ethernet GMAC0 (only used on EB board) */
++	if (designware_initialize(RZN1_GMAC0_BASE, PHY_INTERFACE_MODE_RGMII_ID) >= 0)
++		ret++;
++
++	/* Work out which PHY interface we are using based in the PHY address */
++	if ((CONFIG_PHY1_ADDR == 4) || (CONFIG_PHY1_ADDR == 5))
++		if_type = PHY_INTERFACE_MODE_MII;
++	else
++		if_type = PHY_INTERFACE_MODE_RGMII_ID;
++
++	/* Enable Ethernet GMAC1.
++	 * Uses a fixed 1Gbps link to the 5-port switch.
++	 * The interface specified here is the PHY side, not 5-port switch side.
++	 */
++	if (designware_initialize_fixed_link(RZN1_GMAC1_BASE, if_type, SPEED_1000) >= 0)
++		ret++;
++
++	return ret;
++}
++
++/* Re-use Marvell function */
++void m88e1518_phy_writebits(struct phy_device *phydev,
++		   u8 reg_num, u16 offset, u16 len, u16 data);
++
++int board_phy_config(struct phy_device *phydev)
++{
++	if (phydev->drv->config)
++		phydev->drv->config(phydev);
++
++	/*
++	 * Board Design Note:
++	 * Depending on switch settings and pin multiplexing, the 5-Port Switch
++	 * may use the LED[0] from the PHYs as a link up/down status signal, so
++	 * we program the PHYs to output this.
++	 * Note: This only changes the PHYs that are actually used by U-Boot.
++	 *
++	 * The KSZ8041 PHY LED[0] signal must be inverted by the R-In Engine
++	 * using the "Ethernet PHY Link Mode" reg, see board_init() above.
++	 * If the Switch Link Status signal is disabled by hardware, the 5-Port
++	 * Switch will think the link is permanently down.
++	 */
++#define MARVELL_88E1512		0x1410dd4
++#define MII_MARVELL_PHY_PAGE	22
++	if (phydev->phy_id == MARVELL_88E1512) {
++		phy_write(phydev, MDIO_DEVAD_NONE, MII_MARVELL_PHY_PAGE, 3);
++
++		/* LED Func Control: LED[0]: link up = On, link down = Off */
++		m88e1518_phy_writebits(phydev, 16, 0, 4, 0);
++
++		/* LED[2] is used as an active low interrupt */
++		m88e1518_phy_writebits(phydev, 18, 7, 1, 1);
++
++		phy_write(phydev, MDIO_DEVAD_NONE, MII_MARVELL_PHY_PAGE, 0);
++	}
++
++#define MICREL_KSZ8041		0x221513
++	if (phydev->phy_id == MICREL_KSZ8041) {
++		/* LED Mode: link up = drive low, link down = drive high */
++		m88e1518_phy_writebits(phydev, 0x1e, 14, 2, 1);
++	}
++
++#define PHY_LINK_MODE		0x14		/* Ethernet PHY Link Mode */
++	/* R-IN Engine: Invert all of the 5-Port Switch Link Status signals */
++	rzn1_rin_prot_writel(0x37f, PHY_LINK_MODE);
++
++	return 0;
++}
++#endif	/* RZN1_ENABLE_ETHERNET */
++
++#if defined(CONFIG_SPL_BOARD_INIT)
++void spl_board_init(void)
++{
++	arch_cpu_init();
++	preloader_console_init();
++	board_init();
++	dram_init();
++
++#if defined(RZN1_ENABLE_ETHERNET)
++	rzn1_board_eth_init();
++#endif
++}
++#endif
+diff --git a/configs/rzn1d400-db_defconfig b/configs/rzn1d400-db_defconfig
+new file mode 100644
+index 0000000..9888565
+--- /dev/null
++++ b/configs/rzn1d400-db_defconfig
+@@ -0,0 +1,110 @@
++CONFIG_ARM=y
++CONFIG_ARCH_RZN1D=y
++CONFIG_TARGET_RENESAS_RZN1D400_DB=y
++CONFIG_HUSH_PARSER=y
++CONFIG_BOOTDELAY=1
++
++CONFIG_DEBUG_UART=y
++CONFIG_DEBUG_UART_NS16550=y
++CONFIG_DEBUG_UART_BASE=0x40060000
++CONFIG_DEBUG_UART_CLOCK=20000000
++CONFIG_DEBUG_UART_SHIFT=2
++
++# CONFIG_EFI_LOADER is not set
++
++# CONFIG_CMD_FLASH is not set
++# CONFIG_CMD_IMLS is not set
++# CONFIG_CMD_LOADB is not set
++# CONFIG_CMD_LOADS is not set
++# CONFIG_CMD_XIMG is not set
++# CONFIG_CMD_CONSOLE is not set
++# CONFIG_CMD_DM is not set
++# CONFIG_CMD_EDITENV is not set
++CONFIG_CMD_BOOTZ=y
++CONFIG_CMD_CACHE=y
++CONFIG_CMD_TIMER=y
++# CONFIG_CMD_ITEST is not set
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_CMD_MEMTEST=y
++
++CONFIG_DEFAULT_DEVICE_TREE="rzn1d400-db"
++# CONFIG_DISPLAY_CPUINFO is not set
++
++########## GPIO ##########
++CONFIG_DM_PCA953X=y
++# CONFIG_CMD_GPIO is not set
++
++CONFIG_LED=y
++CONFIG_LED_GPIO=y
++
++########## FPGA ##########
++CONFIG_CMD_FPGA=y
++
++########## USBF/DFU ##########
++CONFIG_USB=y
++CONFIG_USB_GADGET=y
++CONFIG_USB_GADGET_DOWNLOAD=y
++CONFIG_G_DNL_MANUFACTURER="Renesas Electronics"
++CONFIG_G_DNL_VENDOR_NUM=0x045b
++CONFIG_G_DNL_PRODUCT_NUM=0x0239
++CONFIG_DFU_SF=y
++# CONFIG_DFU_NAND is not set
++CONFIG_DFU_RAM=y
++CONFIG_CMD_DFU=y
++CONFIG_CMD_DFU_EXT=y
++
++########## I2C ##########
++# CONFIG_CMD_I2C is not set
++
++########## SF ##########
++CONFIG_SPI_FLASH=y
++CONFIG_SPI_FLASH_BAR=y
++CONFIG_SPI_FLASH_MACRONIX=y
++# CONFIG_SPI_FLASH_USE_4K_SECTORS is not set
++
++########## ETH ##########
++CONFIG_ETH_DESIGNWARE=y
++CONFIG_NETDEVICES=y
++CONFIG_NET=y
++CONFIG_CMD_MII=y
++CONFIG_CMD_PING=y
++# CONFIG_CMD_NFS is not set
++
++########## SDHC ##########
++CONFIG_ARASAN_SDHCI=y
++# CONFIG_BLK is not set
++CONFIG_MMC=y
++# CONFIG_DM_MMC_OPS is not set
++CONFIG_MMC_SDHCI=y
++CONFIG_MMC_SDHCI_SDMA=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_FAT=y
++CONFIG_CMD_EXT4=y
++
++########## USBH ##########
++CONFIG_USB_STORAGE=y
++CONFIG_USB_KEYBOARD=y
++CONFIG_CMD_USB=y
++
++
++################################# SPL ##########################################
++CONFIG_SPL=y
++# CONFIG_SPL_DM_DEVICE_REMOVE is not set
++CONFIG_SPL_SERIAL_SUPPORT=y
++CONFIG_SPL_I2C_SUPPORT=y
++CONFIG_SPL_GPIO_SUPPORT=y
++CONFIG_SPL_OF_TRANSLATE=y
++CONFIG_OF_SPL_REMOVE_PROPS="pinctrl-0 pinctrl-names clocks clock-names interrupt-parent interrupts"
++CONFIG_SPL_DM_SEQ_ALIAS=y
++CONFIG_SPL_USE_ARCH_MEMSET=y
++CONFIG_SPL_USE_ARCH_MEMCPY=y
++CONFIG_SPL_OS_BOOT=y
++CONFIG_SPL_MULTIIMAGE=y
++
++########## SF ##########
++CONFIG_SPL_SPI_FLASH_SUPPORT=y
++CONFIG_SPL_SPI_SUPPORT=y
++
++# CONFIG_SPL_NAND_SUPPORT is not set
++# CONFIG_SPL_NAND_DRIVERS is not set
++# CONFIG_SPL_NAND_ONFI is not set
+diff --git a/include/configs/rzn1d400-db.h b/include/configs/rzn1d400-db.h
+new file mode 100644
+index 0000000..ea3a182
+--- /dev/null
++++ b/include/configs/rzn1d400-db.h
+@@ -0,0 +1,265 @@
++/*
++ * Renesas RZN1-400  module (RZ/N1D device) base board
++ *
++ * (C) Copyright 2016 Renesas Electronics Europe Limited
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#ifndef __RZN1D400_DB_H
++#define __RZN1D400_DB_H
++
++#include "rzn1-common.h"
++#include "renesas/rzn1-memory-map.h"
++#include "renesas/rzn1-sysctrl.h"
++
++#define CONFIG_BOARD_NAME	"Renesas RZN1D-DB"
++
++/*
++ * The BootROM will start the 2nd core and execute WFE. On an event it will
++ * read from the SYSCTRL BOOTADDR register. However, this register can only
++ * be accessed from SECURE mode. U-Boot switches to NONSEC mode by writing
++ * the address of _smp_pen to BOOTADDR, then kicking the 2nd CPU. The _smp_pen
++ * code switches mode, then runs the smp_waitloop code. The smp_waitloop code
++ * uses a second holding pen to allow so it can be used in NONSEC mode.
++ *
++ * U-Boot switches into NONSEC mode based on the "bootm_boot_mode" environment
++ * variable and the CONFIG_ARMV7_BOOT_SEC_DEFAULT symbol.
++ * However, RZ/N1 checks an additional "boot_hyp" environment variable to
++ * decide whether to switch to NONSEC+HYP mode.
++ */
++#define CONFIG_SMP_PEN_ADDR		smp_secondary_bootaddr
++#define CONFIG_OF_BOARD_SETUP
++#define CONFIG_BOARD_LATE_INIT
++
++#define CONFIG_SYS_THUMB_BUILD
++#define CONFIG_SYS_LONGHELP
++#define	CONFIG_CMDLINE_EDITING
++#define CONFIG_VERSION_VARIABLE		/* include version env variable */
++/* debug purpose */
++#define CONFIG_MD5
++#define CONFIG_CMD_MD5SUM
++
++/* Local helper symbols to enable/disable functionality */
++#define RZN1_ENABLE_I2C
++#define RZN1_ENABLE_GPIO
++#define RZN1_ENABLE_SDHC
++#define RZN1_ENABLE_ETHERNET
++#define RZN1_ENABLE_QSPI
++#undef RZN1_ENABLE_NAND
++#define RZN1_ENABLE_USBF
++#define RZN1_ENABLE_USBH
++#define RZN1_ENABLE_SPL
++
++/* GPIOs */
++#define CONFIG_RZN1_GPIO
++
++/* FPGA reprogramming */
++#define CONFIG_FPGA
++#define CONFIG_FPGA_LATTICE
++#define CONFIG_FPGA_COUNT	1
++
++/* ECC is disabled */
++/*#define RZN1_ENABLE_DDR_ECC*/
++
++/* SRAM */
++#define CONFIG_SYS_TEXT_BASE		0x200a0000
++#define CONFIG_SYS_STAY_IN_SRAM
++/* Very early stack, 320KB above start of U-Boot image */
++#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_TEXT_BASE + (320 * 1024) - 4)
++#define CONFIG_SYS_MALLOC_LEN		(320 * 1024)
++
++/* DDR Memory */
++#ifdef RZN1_ENABLE_DDR_ECC
++#define CONFIG_CADENCE_DDR_CTRL_8BIT_WIDTH
++#define CONFIG_CADENCE_DDR_CTRL_ENABLE_ECC
++#define DDR_MAX_SIZE 			128
++#else
++#define DDR_MAX_SIZE 			256
++#endif
++
++#define CONFIG_SYS_MEMTEST_START	(CONFIG_SYS_SDRAM_BASE)
++#define CONFIG_SYS_MEMTEST_END		(CONFIG_SYS_MEMTEST_START + DDR_MAX_SIZE * 1024 * 1024 - 1)
++#define	CONFIG_SYS_ALT_MEMTEST
++#define CONFIG_SYS_MEMTEST_SCRATCH	RZN1_SRAM_SYS_BASE
++#undef CONFIG_SYS_SDRAM_SIZE
++#define CONFIG_SYS_SDRAM_SIZE		(DDR_MAX_SIZE * 1024 * 1024)
++
++/* This is not used by uboot startup, just by qspi etc */
++#define CONFIG_SYS_LOAD_ADDR		0x80008000
++
++/* Serial */
++#define CONFIG_BAUDRATE			115200
++
++
++/* ENV settings.
++ * To avoid U-Boot accessing NAND/QSPI, you might want to set NOWHERE instead.
++ */
++#if defined(RZN1_ENABLE_QSPI)
++ #define CONFIG_ENV_IS_IN_SPI_FLASH
++#else
++ #define CONFIG_ENV_IS_NOWHERE		/* Store ENV in memory only */
++#endif
++
++/* The ENV offsets match the DFU offsets for *_env */
++#if defined(CONFIG_ENV_IS_IN_SPI_FLASH)
++ #define CONFIG_ENV_OFFSET		0xa0000
++ #define CONFIG_ENV_SECT_SIZE		(64 * 1024)
++#endif
++#define CONFIG_ENV_SIZE			(8 * 1024)
++
++
++/***** SPI Flash *****/
++#if defined(RZN1_ENABLE_QSPI)
++ #define CONFIG_SF_DEFAULT_SPEED	62500000
++ #define CONFIG_ENV_SPI_MAX_HZ		62500000
++/* Reading using QuadIO can achieve 20% better throughput compared to QuadOutput
++ * on this board. However, the if you want to use the same U-Boot binary on
++ * boards with a second source SPI Flash, check that all use the same number of
++ * dummy cycles in this mode. If not, you may want to use the QuadOuput read
++ * command instead */
++/* Macronix MX25L25635F : 8 dummy cycles for Quad Output Fast,  6 for QuadIO */
++/* Micron   N25Q128     : 8 dummy cycles for Quad Output Fast, 10 for QuadIO */
++ #define CONFIG_SPI_FLASH_READ_QUAD_CMD	CMD_READ_QUAD_IO_FAST
++ #define CONFIG_SPI_FLASH_DUMMY_CYCLES	6
++ #define CONFIG_CQSPI_DECODER		0	/* i.e. don't use 4-to-16 CS decoder */
++#endif /* RZN1_ENABLE_QSPI */
++
++#define CONFIG_SYS_MAX_FLASH_BANKS	1
++
++
++/***** Ethernet *****/
++#if defined(RZN1_ENABLE_ETHERNET)
++ #define CONFIG_MII
++ #define CONFIG_PHY_GIGE		/* Include GbE speed/duplex detection */
++ #define CONFIG_PHY_MICREL
++ #define CONFIG_PHY_MARVELL
++ #define CONFIG_PHY_RESET_DELAY		1000	/* PHY RESET recovery delay in usec */
++ #define RZN1_APPLY_ETH_PHY_RESET_PULSE /* Reset cycle on signal phy reset */
++
++/*
++ * GMAC1 is connected to a Marvell PHY on the Extension board
++ * RGMII/GMII Conv   PHY Addr    PHY     Connector
++ *        1             8       Marvell  J22 (Ext Board)
++ */
++ #define CONFIG_PHY_ADDR		8
++
++/*
++ * GMAC2 is connected to the 5-port Switch and all ports are enabled.
++ * Two Micrel PHYs are on the CPU board, two additional Marvell PHYs are on the
++ * Extension board. The board setup code specifies the MII interface type used,
++ * see call to designware_initialize_fixed_link().
++ * We can only use one PHY in U-Boot.
++ * Switch Port   RGMII/GMII Conv   PHY Addr    PHY     Connector
++ *      3               2             1       Marvell  J23 (Ext Board)
++ *      2               3            10       Marvell  J24 (Ext Board)
++ *      1               4             4       Micrel   CN1
++ *      0               5             5       Micrel   CN4
++ */
++ #define CONFIG_HAS_ETH1
++ #define CONFIG_PHY1_ADDR		4
++#endif /* RZN1_ENABLE_ETHERNET */
++
++/***** SDHC *****/
++#if defined(RZN1_ENABLE_SDHC)
++ #define CONFIG_SDHCI_ARASAN_QUIRKS	SDHCI_QUIRK_WAIT_SEND_CMD
++ #define CONFIG_GENERIC_MMC
++ #define CONFIG_DOS_PARTITION
++ #define CONFIG_FS_FAT_MAX_CLUSTSIZE (8 * 1024)
++#endif /* RZN1_ENABLE_SDHC */
++
++#if defined(RZN1_ENABLE_USBH)
++ #define CONFIG_USB_EHCI
++ #define CONFIG_USB_EHCI_RMOBILE
++ #define CONFIG_USB_MAX_CONTROLLER_COUNT	1
++ #define CONFIG_SYS_USB_OHCI_MAX_ROOT_PORTS	1
++#endif /* RZN1_ENABLE_USBH */
++
++/***** USB Device aka Gadget aka Function *****/
++#if defined(RZN1_ENABLE_USBF)
++ /* Default is... 8 MB !! Note that it needs to be AT LEAST the size of
++  * a single erase block of the nand/qspi, otherwise the operation will fail */
++ #define CONFIG_SYS_DFU_DATA_BUF_SIZE	(64 * 1024)
++ #define DFU_DEFAULT_POLL_TIMEOUT	100
++
++ #define DFU_EXT_INFO \
++	"dfu_ext_info=" \
++	"sf sf_spl raw 0 10000;" \
++	"sf sf_rpkgt raw 10000 10000;" \
++	"sf sf_uboot raw 20000 80000;" \
++	"sf sf_env raw a0000 10000;" \
++	"sf sf_dtb raw b0000 20000;" \
++	"sf sf_cm3 raw d0000 100000;" \
++	"sf sf_kernel raw 1d0000 600000;" \
++	"sf sf_data raw 7d0000 0;" \
++	"sf sf_vxworks raw d0000 600000;" \
++	"ram r_kernel ram 80008000 d80000;" \
++	"ram r_vxworks ram 80008000 d80000\0"
++#else
++ #define DFU_EXT_INFO
++#endif /* RZN1_ENABLE_USBF */
++
++#define CONFIG_BOOTDELAY 1
++#define CONFIG_BOOTCOMMAND ""
++/* Default environment variables */
++#define CONFIG_EXTRA_ENV_SETTINGS \
++	DFU_EXT_INFO \
++	"bootdelay=1\0" \
++	"loadaddr=80008000\0" \
++	"ethaddr=00:00:0a:02:57:CD\0" \
++	"eth1addr=00:00:0a:02:57:CE\0" \
++	"netmask=255.255.255.0\0" \
++	"serverip=192.168.1.30\0" \
++	"ipaddr=192.168.1.50\0"
++
++
++/***** SPL (Secondary Program Loader) *****/
++#if defined(RZN1_ENABLE_SPL)
++
++/* U-Boot/SPL is at the top of UA SRAM, out of the way of CM3 code which has to
++ * be at the start of UA SRAM. These definitions setup SPL so that code, heap,
++ * and stack at located together. */
++#define CONFIG_SPL_MAX_FOOTPRINT	(80 * 1024)
++#define CONFIG_SYS_SPL_MALLOC_SIZE	(40 * 1024)
++#define RZN1_SPL_STACK_SIZE		(8 * 1024)
++
++#define RZN1_SPL_SRAM_SIZE		(CONFIG_SPL_MAX_FOOTPRINT + \
++						CONFIG_SYS_SPL_MALLOC_SIZE + \
++						RZN1_SPL_STACK_SIZE)
++#define CONFIG_SPL_TEXT_BASE		0x040e0000 // (0x04100000 - RZN1_SPL_SRAM_SIZE)
++
++#define CONFIG_SYS_SPL_MALLOC_START	(CONFIG_SPL_TEXT_BASE + CONFIG_SPL_MAX_FOOTPRINT)
++#define CONFIG_SPL_STACK		(CONFIG_SYS_SPL_MALLOC_START + CONFIG_SYS_SPL_MALLOC_SIZE + RZN1_SPL_STACK_SIZE)
++
++/* If QSPI is enabled, default to loading the image or Package Table from QSPI */
++#if defined(RZN1_ENABLE_QSPI)
++ #define CONFIG_SPL_SPI_LOAD
++#endif
++
++#include "rzn1-spl.h"
++	/* Offset corresponds to DFU sf_rpkgt */
++	#define CONFIG_SYS_SPI_U_BOOT_OFFS      0x10000
++
++/* Make SPL skip checking the signatures of loaded images */
++/* WARNING! This is for development & testing only */
++#define RZN1_SKIP_BOOTROM_CALLS
++
++/*
++ * This is the hash of the public key used to sign BLp wrapped images that is
++ * loaded by U-Boot/SPL. If you are not verifying the signature of packages, it
++ * will not be used.
++ * This particular hash is key 6 from keys used during testing of the BootROM.
++ */
++#define RZN1_SPL_RPKG_HASH \
++	0xf5, 0x05, 0x93, 0x54, \
++	0xda, 0x47, 0x4f, 0xe4, \
++	0x1f, 0x2c, 0x7d, 0xfe, \
++	0xbb, 0x41, 0x0d, 0xed, \
++	0xa3, 0x25, 0x3f, 0xef, \
++	0xa7, 0x29, 0x0c, 0x28, \
++	0x07, 0x1f, 0xbf, 0x76, \
++	0x26, 0xa3, 0x7e, 0x4c,
++
++#endif /* RZN1_ENABLE_SPL */
++
++#endif /* __RZN1D400_DB_H */
+-- 
+2.7.4
+

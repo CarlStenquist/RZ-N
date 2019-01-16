@@ -1,0 +1,97 @@
+From ce7fe676d7b7894d4018339bbbcb59e465dde636 Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Mon, 3 Oct 2016 14:14:51 +0100
+Subject: [PATCH] sf: Add support for memory-mapped writes for spi flashes
+
+Some drivers allow transparently writing to a SPI flash by writing to a
+memory map. This patch adds a XFER mode for MMAP_WRITE that allows the
+spi slave driver to disable write protection during an explicit write,
+and a separate memory map pointer for the write memory map start.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ drivers/mtd/spi/spi_flash.c | 27 +++++++++++++++++++++++++++
+ include/spi.h               |  1 +
+ include/spi_flash.h         |  2 ++
+ 3 files changed, 30 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi_flash.c b/drivers/mtd/spi/spi_flash.c
+index 32a46b3..14e7c08 100644
+--- a/drivers/mtd/spi/spi_flash.c
++++ b/drivers/mtd/spi/spi_flash.c
+@@ -351,6 +351,30 @@ int spi_flash_cmd_write_ops(struct spi_flash *flash, u32 offset,
+ 	size_t chunk_len, actual;
+ 	u8 cmd[SPI_FLASH_CMD_LEN];
+ 	int ret = -1;
++	unsigned long timeout = SPI_FLASH_PROG_TIMEOUT;
++
++	/* Handle memory-mapped SPI */
++	if (flash->memory_map_write) {
++		ret = spi_claim_bus(flash->spi);
++		if (ret) {
++			debug("SF: unable to claim SPI bus\n");
++			return ret;
++		}
++		spi_xfer(flash->spi, 0, NULL, NULL, SPI_XFER_MMAP_WRITE);
++		memcpy(flash->memory_map_write + offset, buf, len);
++		spi_xfer(flash->spi, 0, NULL, NULL, SPI_XFER_MMAP_END);
++
++		ret = spi_flash_wait_till_ready(flash, timeout);
++		if (ret < 0) {
++			debug("SF: write %s timed out\n",
++			      timeout == SPI_FLASH_PROG_TIMEOUT ?
++				"program" : "page erase");
++			return ret;
++		}
++
++		spi_release_bus(flash->spi);
++		return 0;
++	}
+ 
+ 	page_size = flash->page_size;
+ 
+@@ -932,6 +956,9 @@ int spi_flash_decode_fdt(const void *blob, struct spi_flash *flash)
+ 		return -1;
+ 	}
+ 	flash->memory_map = map_sysmem(addr, size);
++
++	if (fdtdec_get_bool(blob, node, "memory-map-write"))
++		flash->memory_map_write = flash->memory_map;
+ #endif
+ 
+ 	return 0;
+diff --git a/include/spi.h b/include/spi.h
+index 3a3324e..a6d39f1 100644
+--- a/include/spi.h
++++ b/include/spi.h
+@@ -112,6 +112,7 @@ struct spi_slave {
+ #define SPI_XFER_ONCE		(SPI_XFER_BEGIN | SPI_XFER_END)
+ #define SPI_XFER_MMAP		BIT(2)	/* Memory Mapped start */
+ #define SPI_XFER_MMAP_END	BIT(3)	/* Memory Mapped End */
++#define SPI_XFER_MMAP_WRITE	BIT(4)	/* Memory Mapped Write Access */
+ };
+ 
+ /**
+diff --git a/include/spi_flash.h b/include/spi_flash.h
+index be2fe3f..0314996 100644
+--- a/include/spi_flash.h
++++ b/include/spi_flash.h
+@@ -49,6 +49,7 @@ struct spi_slave;
+  * @write_cmd:		Write cmd - page and quad program.
+  * @dummy_byte:		Dummy cycles for read operation.
+  * @memory_map:		Address of read-only SPI flash access
++ * @memory_map_write:	Address of write SPI flash access
+  * @flash_lock:		lock a region of the SPI Flash
+  * @flash_unlock:	unlock a region of the SPI Flash
+  * @flash_is_locked:	check if a region of the SPI Flash is completely locked
+@@ -85,6 +86,7 @@ struct spi_flash {
+ 	u8 dummy_byte;
+ 
+ 	void *memory_map;
++	void *memory_map_write;
+ 
+ 	int (*flash_lock)(struct spi_flash *flash, u32 ofs, size_t len);
+ 	int (*flash_unlock)(struct spi_flash *flash, u32 ofs, size_t len);
+-- 
+2.7.4
+

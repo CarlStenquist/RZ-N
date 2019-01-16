@@ -1,0 +1,36 @@
+From 5a1a48b1dcc70a5f6ac18712d548a681fdee731c Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 15 Apr 2015 16:21:30 +0100
+Subject: [PATCH] dfu: Handle incomplete operations
+
+If the DFU operation failed for whatever reason, we need to handle it.
+If the host attempts to 'set alt', we can be sure that we are starting
+a new DFU operation, and will require the internal state to be reset.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/usb/gadget/f_dfu.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/usb/gadget/f_dfu.c b/drivers/usb/gadget/f_dfu.c
+index 8e7c981..0d23830 100644
+--- a/drivers/usb/gadget/f_dfu.c
++++ b/drivers/usb/gadget/f_dfu.c
+@@ -757,12 +757,14 @@ static void dfu_unbind(struct usb_configuration *c, struct usb_function *f)
+ static int dfu_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
+ {
+ 	struct f_dfu *f_dfu = func_to_dfu(f);
++	struct dfu_entity *dfu = dfu_get_entity(f_dfu->altsetting);
+ 
+ 	debug("%s: intf:%d alt:%d\n", __func__, intf, alt);
+ 
+ 	f_dfu->altsetting = alt;
+ 	f_dfu->dfu_state = DFU_STATE_dfuIDLE;
+ 	f_dfu->dfu_status = DFU_STATUS_OK;
++	dfu->inited = 0;
+ 
+ 	return 0;
+ }
+-- 
+2.7.4
+

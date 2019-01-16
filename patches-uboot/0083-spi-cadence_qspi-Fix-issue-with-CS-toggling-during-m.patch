@@ -1,0 +1,45 @@
+From 97133ccf01dced9fe15a2948acaecaa958c5256a Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Thu, 29 Jun 2017 16:05:15 +0100
+Subject: [PATCH] spi: cadence_qspi: Fix issue with CS toggling during
+ memory-mapped writes
+
+When using the memory-mapped interface, the writes do not happen with the
+cadence_spi_xfer() function. Therefore, we have to ensure that the Chip
+Select lines do not change at any time during other than at the start of the
+transfer. Otherwise, you may find that the CS is deactivated whilst the
+controller is still writing data.
+
+Note: This is very much timing dependant as we saw no problems when the data
+cache setting for the U-Boot internal data was set to write-through, but
+setting it to write-back caused QSPI write errors.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/spi/cadence_qspi.c | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/spi/cadence_qspi.c b/drivers/spi/cadence_qspi.c
+index 89ad33d..13d12be 100644
+--- a/drivers/spi/cadence_qspi.c
++++ b/drivers/spi/cadence_qspi.c
+@@ -219,9 +219,13 @@ static int cadence_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	}
+ 	debug("%s: len=%d [bytes]\n", __func__, data_bytes);
+ 
+-	/* Set Chip select */
+-	cadence_qspi_apb_chipselect(base, spi_chip_select(dev),
+-				    CONFIG_CQSPI_DECODER);
++	/* Set Chip select
++	 * Only do this beginning, otherwise we can end up toggling the CS
++	 * line whilst a memory mapped access is still pushing data out
++	 */
++	if (flags & SPI_XFER_BEGIN)
++		cadence_qspi_apb_chipselect(base, spi_chip_select(dev),
++					CONFIG_CQSPI_DECODER);
+ 
+ 	if ((flags & SPI_XFER_END) || (flags == 0)) {
+ 		if (priv->cmd_len == 0) {
+-- 
+2.7.4
+

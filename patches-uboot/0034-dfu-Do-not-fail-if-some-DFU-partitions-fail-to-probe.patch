@@ -1,0 +1,31 @@
+From 63336dbfd737e61f793f8d5b0e023afaf27b4a8f Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Fri, 1 May 2015 13:36:28 +0100
+Subject: [PATCH] dfu: Do not fail if some DFU partitions fail to probe
+
+As long as /some/ DFU partitions are there, do not fail if one fails to
+probe.
+This allows optional flash chips for example.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ drivers/dfu/dfu.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/dfu/dfu.c b/drivers/dfu/dfu.c
+index 8dacc1a..579b687 100644
+--- a/drivers/dfu/dfu.c
++++ b/drivers/dfu/dfu.c
+@@ -476,8 +476,7 @@ int dfu_config_entities(char *env, char *interface, char *devstr)
+ 		list_add_tail(&dfu[i].list, &dfu_list);
+ 		alt_num_cnt++;
+ 	}
+-
+-	return 0;
++	return alt_num_cnt > 0 ? 0 : -1;
+ }
+ 
+ const char *dfu_get_dev_type(enum dfu_device_type t)
+-- 
+2.7.4
+

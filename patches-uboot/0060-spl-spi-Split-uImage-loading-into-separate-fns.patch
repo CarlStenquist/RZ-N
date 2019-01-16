@@ -1,0 +1,165 @@
+From d41ca6c0a805befeb5aef1e0e3cb50590749f3dd Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 12 Dec 2016 14:37:49 +0000
+Subject: [PATCH] spl: spi: Split uImage loading into separate fns
+
+This will allow us to later on probe once and then load multiple
+images.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/spl/spl_spi.c | 107 +++++++++++++++++++++++++++++----------------------
+ include/spl.h        |   4 ++
+ 2 files changed, 65 insertions(+), 46 deletions(-)
+
+diff --git a/common/spl/spl_spi.c b/common/spl/spl_spi.c
+index bea7d2a..29faa10 100644
+--- a/common/spl/spl_spi.c
++++ b/common/spl/spl_spi.c
+@@ -61,17 +61,26 @@ static ulong spl_spi_fit_read(struct spl_load_info *load, ulong sector,
+ 	else
+ 		return 0;
+ }
+-/*
+- * The main entry for SPI booting. It's necessary that SDRAM is already
+- * configured and available since this code loads the main U-Boot image
+- * from SPI into SDRAM and starts it from there.
+- */
+-static int spl_spi_load_image(struct spl_image_info *spl_image,
+-			      struct spl_boot_device *bootdev)
++
++struct spi_flash *spl_spi_probe(void)
+ {
+-	int err = 0;
+ 	struct spi_flash *flash;
++
++	flash = spi_flash_probe(CONFIG_SF_DEFAULT_BUS, CONFIG_SF_DEFAULT_CS,
++				CONFIG_SF_DEFAULT_SPEED, SPI_MODE_3);
++	if (!flash) {
++		puts("SPI probe failed.\n");
++		hang();
++	}
++
++	return flash;
++}
++
++int spl_spi_load_one_uimage(struct spl_image_info *spl_image,
++	struct spi_flash *flash, u32 offset)
++{
+ 	struct image_header header;
++	int err = 0;
+ 
+ 	/*
+ 	 * Skip loading the mkimage header. This is only necessary for block
+@@ -81,51 +90,57 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
+ 	 */
+ 	spl_image->flags |= SPL_COPY_PAYLOAD_ONLY;
+ 
+-	/*
+-	 * Load U-Boot image from SPI flash into RAM
+-	 */
++	/* Load u-boot mkimage header */
++	err = spi_flash_read(flash, offset, sizeof(header), (void *)&header);
++	if (err)
++		return err;
+ 
+-	flash = spi_flash_probe(CONFIG_SF_DEFAULT_BUS,
+-				CONFIG_SF_DEFAULT_CS,
+-				CONFIG_SF_DEFAULT_SPEED,
+-				CONFIG_SF_DEFAULT_MODE);
+-	if (!flash) {
+-		puts("SPI probe failed.\n");
+-		return -ENODEV;
++	if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
++		image_get_magic(&header) == FDT_MAGIC) {
++		struct spl_load_info load;
++
++		debug("Found FIT\n");
++		load.dev = flash;
++		load.priv = NULL;
++		load.filename = NULL;
++		load.bl_len = 1;
++		load.read = spl_spi_fit_read;
++		err = spl_load_simple_fit(spl_image, &load, offset, &header);
++	} else {
++		err = spl_parse_image_header(spl_image, &header);
++		if (err)
++			return err;
++		err = spi_flash_read(flash, offset + sizeof(header),
++				     spl_image->size,
++				     (void *)spl_image->load_addr);
+ 	}
+ 
++	return err;
++}
++
++/*
++ * The main entry for SPI booting. It's necessary that SDRAM is already
++ * configured and available since this code loads the main U-Boot image
++ * from SPI into SDRAM and starts it from there.
++ */
++static int spl_spi_load_image(struct spl_image_info *spl_image,
++			      struct spl_boot_device *bootdev)
++{
++	int err = 0;
++	struct spi_flash *flash;
++#ifdef CONFIG_SPL_OS_BOOT
++	struct image_header header_stack;
++	struct image_header *header = &header_stack;
++#endif
++
++	flash = spl_spi_probe();
++
+ #ifdef CONFIG_SPL_OS_BOOT
+ 	if (spl_start_uboot() || spi_load_image_os(spl_image, flash, &header))
+ #endif
+ 	{
+-		/* Load u-boot, mkimage header is 64 bytes. */
+-		err = spi_flash_read(flash, CONFIG_SYS_SPI_U_BOOT_OFFS,
+-				     sizeof(header), (void *)&header);
+-		if (err)
+-			return err;
+-
+-		if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
+-			image_get_magic(header) == FDT_MAGIC) {
+-			struct spl_load_info load;
+-
+-			debug("Found FIT\n");
+-			load.dev = flash;
+-			load.priv = NULL;
+-			load.filename = NULL;
+-			load.bl_len = 1;
+-			load.read = spl_spi_fit_read;
+-			err = spl_load_simple_fit(spl_image, &load,
+-						  CONFIG_SYS_SPI_U_BOOT_OFFS,
+-						  &header);
+-		} else {
+-			err = spl_parse_image_header(spl_image, &header);
+-			if (err)
+-				return err;
+-			err = spi_flash_read(flash, CONFIG_SYS_SPI_U_BOOT_OFFS
+-					     + sizeof(header),
+-					     spl_image->size,
+-					     (void *)spl_image->load_addr);
+-		}
++		err = spl_spi_load_one_uimage(spl_image, flash,
++					CONFIG_SYS_SPI_U_BOOT_OFFS);
+ 	}
+ 
+ 	return err;
+diff --git a/include/spl.h b/include/spl.h
+index 6e746b2..784e839 100644
+--- a/include/spl.h
++++ b/include/spl.h
+@@ -250,4 +250,8 @@ int spl_dfu_cmd(int usbctrl, char *dfu_alt_info, char *interface, char *devstr);
+ int spl_mmc_load_image(struct spl_image_info *spl_image,
+ 		       struct spl_boot_device *bootdev);
+ 
++struct spi_flash *spl_spi_probe(void);
++int spl_spi_load_one_uimage(struct spl_image_info *spl_image,
++	struct spi_flash *flash, u32 offset);
++
+ #endif
+-- 
+2.7.4
+

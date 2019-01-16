@@ -1,0 +1,35 @@
+From e759c2cff74d2f1516b8cc29cd4a133aa6417876 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 3 Oct 2016 14:03:01 +0100
+Subject: [PATCH] Basic Linux platform driver header
+
+Defines a struct that most Linux drivers use, and modify the device struct.
+It's not intended to replicate the functionality, it's just enough to make
+most of the code in a Linux driver work on U-Boot.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ include/linux/compat.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/include/linux/compat.h b/include/linux/compat.h
+index 81780a0..6b425e2 100644
+--- a/include/linux/compat.h
++++ b/include/linux/compat.h
+@@ -269,6 +269,13 @@ struct device {
+ 	/* This is used from drivers/usb/musb-new subsystem only */
+ 	void		*driver_data;	/* data private to the driver */
+ 	void            *device_data;   /* data private to the device */
++
++	/* Linux driver compatibility only */
++	void		*platform_data;
++};
++/* Linux driver compatibility only */
++struct platform_device {
++	struct device dev;
+ };
+ struct mutex { int i; };
+ struct kernel_param { int i; };
+-- 
+2.7.4
+

@@ -1,0 +1,43 @@
+From 4fe1fee7d7c16580acea8d50f0a07221129199af Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Tue, 13 Dec 2016 10:18:20 +0000
+Subject: [PATCH] arm: Allow cpu to switch to NONSEC mode early on
+
+This change introduces a new option, CONFIG_ARMV7_NONSEC_AT_BOOT, which
+requires board specific code to switch into NONSEC mode early on, for
+example at the end of board_init(), by calling armv7_init_nonsec().
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ arch/arm/lib/bootm.c         | 2 +-
+ scripts/config_whitelist.txt | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/lib/bootm.c b/arch/arm/lib/bootm.c
+index d0bf729..dccf7ef 100644
+--- a/arch/arm/lib/bootm.c
++++ b/arch/arm/lib/bootm.c
+@@ -372,7 +372,7 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
+ 		r2 = gd->bd->bi_boot_params;
+ 
+ 	if (!fake) {
+-#ifdef CONFIG_ARMV7_NONSEC
++#if defined(CONFIG_ARMV7_NONSEC) && !defined(CONFIG_ARMV7_NONSEC_AT_BOOT)
+ 		if (armv7_boot_nonsec()) {
+ 			nonsec_and_hyp = getenv_yesno("boot_hyp");
+ 			armv7_init_nonsec();
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index 899eb45..4fff1a3 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -177,6 +177,7 @@ CONFIG_ARMADA100_FEC
+ CONFIG_ARMADA168
+ CONFIG_ARMADA_39X
+ CONFIG_ARMCORTEXA9
++CONFIG_ARMV7_NONSEC_AT_BOOT
+ CONFIG_ARMV7_PSCI_1_0
+ CONFIG_ARMV7_SECURE_BASE
+ CONFIG_ARMV7_SECURE_MAX_SIZE
+-- 
+2.7.4
+

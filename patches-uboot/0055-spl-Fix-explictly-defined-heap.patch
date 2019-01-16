@@ -1,0 +1,53 @@
+From f23d14306a8a6891670dd279013e431e16b273af Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 10 Feb 2017 07:29:10 +0000
+Subject: [PATCH] spl: Fix explictly defined heap
+
+When the heap has been defined with CONFIG_SYS_SPL_MALLOC_START and
+CONFIG_SYS_SPL_MALLOC_SIZE, you do not want to ignore it.
+
+This is particularly important now that SPL DM serial code needs
+CONFIG_SYS_MALLOC_F_LEN to be defined.
+
+The alternative is to increase CONFIG_SYS_MALLOC_F_LEN to cover an
+individual boards heap needs. Unfortunately, this has the side effect
+of increasing the early heap in full U-Boot builds.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/spl/spl.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/common/spl/spl.c b/common/spl/spl.c
+index f7df834..ecaa203 100644
+--- a/common/spl/spl.c
++++ b/common/spl/spl.c
+@@ -233,6 +233,7 @@ int spl_init(void)
+ 	int ret;
+ 
+ 	debug("spl_init()\n");
++#if !defined(CONFIG_SYS_SPL_MALLOC_START) || !defined(CONFIG_SYS_SPL_MALLOC_SIZE)
+ #if defined(CONFIG_SYS_MALLOC_F_LEN)
+ #ifdef CONFIG_MALLOC_F_ADDR
+ 	gd->malloc_base = CONFIG_MALLOC_F_ADDR;
+@@ -240,6 +241,7 @@ int spl_init(void)
+ 	gd->malloc_limit = CONFIG_SYS_MALLOC_F_LEN;
+ 	gd->malloc_ptr = 0;
+ #endif
++#endif
+ 	if (CONFIG_IS_ENABLED(OF_CONTROL) && !CONFIG_IS_ENABLED(OF_PLATDATA)) {
+ 		ret = fdtdec_setup();
+ 		if (ret) {
+@@ -343,6 +345,9 @@ void board_init_r(gd_t *dummy1, ulong dummy2)
+ #if defined(CONFIG_SYS_SPL_MALLOC_START)
+ 	mem_malloc_init(CONFIG_SYS_SPL_MALLOC_START,
+ 			CONFIG_SYS_SPL_MALLOC_SIZE);
++	gd->malloc_base = CONFIG_SYS_SPL_MALLOC_START;
++	gd->malloc_limit = CONFIG_SYS_SPL_MALLOC_SIZE;
++	gd->malloc_ptr = 0;
+ 	gd->flags |= GD_FLG_FULL_MALLOC_INIT;
+ #endif
+ 	if (!(gd->flags & GD_FLG_SPL_INIT)) {
+-- 
+2.7.4
+

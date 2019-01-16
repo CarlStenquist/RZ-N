@@ -1,16 +1,10 @@
 #!/bin/bash
 #   http://sources.buildroot.net/
 
-# ==========================================================================
-# CHANGE HISTORY
-#
+# ===
+#History
 # CS: Added repo https://github.com/renesas-rz/rzn1_linux.git to kernel sections build and update.
-# 
-# CS, 10/31/18: Changed U-Boot build section to be acc. to 1.3.1 U-Boot manual. Need to merge this 
-# new section into Chris's more refined build right below it later, and perhaps add the spkg-utility 
-# converter.
-#
-# ==========================================================================
+# ====
 
 # Function: usage
 function usage {
@@ -59,7 +53,7 @@ function check_for_toolchain {
   CHECK=$(which ${CROSS_COMPILE}gcc)
   if [ "$CHECK" == "" ] ; then
     # Toolchain was found in path, so maybe it was hard coded in setup_env.sh
-    return/
+    return
   fi
   if [ ! -e $OUTDIR/br_version.txt ] ; then
     banner_red "Toolchain not installed yet."
@@ -70,7 +64,7 @@ function check_for_toolchain {
 }
 
 # Save current config settings to file
-function save_confiRZ-N1D-System-Setup-Tutorial.pdfg {
+function save_config {
   echo "BOARD=$BOARD" > output/config.txt
   echo "UBOOTCONFIG=$UBOOTCONFIG" >> output/config.txt
   echo "UBOOTBOARD=$UBOOTBOARD" >> output/config.txt
@@ -325,7 +319,7 @@ if [ "$1" == "kernel" ] || [ "$1" == "k" ] ; then
 
   cd $OUTDIR
 
-  # install rzn1_linux
+  # install linux-4.9
   if [ ! -e rzn1_linux ] ; then
 
     CHECK=`which git`
@@ -427,11 +421,13 @@ fi
 # build u-boot
 ###############################################################################
 if [ "$1" == "u-boot" ] || [ "$1" == "u" ] ; then
+  banner_yellow "Building u-boot"
+
   check_for_toolchain
-  
+
   # The dtc program is inside the kernel source tree
-  if [ -e $OUTDIR/rzn1_linux/scripts/dtc/dtc ] ; then
-    PATH=$PATH:$OUTDIR/rzn1_linux/scripts/dtc
+  if [ -e $OUTDIR/linux-4.9/scripts/dtc/dtc ] ; then
+    PATH=$PATH:$OUTDIR/linux-4.9/scripts/dtc
   fi
 
   CHECK=`which dtc`
@@ -439,100 +435,13 @@ if [ "$1" == "u-boot" ] || [ "$1" == "u" ] ; then
     banner_red "dtc is not installed"
     echo -e "You need the 'dtc' program (device tree compiler) in order to build the device trees in the u-boot source"
     echo -e "In Ubuntu, you can install it by running:\n\tsudo apt-get install device-tree-compiler\n\n"
-    echo -e "NOTE: It is also included in the rzn1_linux kernel source tree, so if you build the kernel first, "
+    echo -e "NOTE: It is also included in the linux-4.9 kernel source tree, so if you build the kernel first, "
     echo -e "we can just use that version you do not need to manally install it.\n\n"
     echo -e "Exiting build script.\n"
     exit
-  else
-    echo -e "DTC installed.\n"
   fi
 
   cd $OUTDIR
-
-  # ==========================================================================
-  # Need to merge this new section for 1.3.1 DVD into more refined build right 
-  # below. See CH. HISTORY.
-  # ==========================================================================
-  banner_yellow Observe!
-  echo -e "This is for the 1.3.1 DVD and higher revisions and follows RZN1-U-Boot-User-Manual"
-  echo -e "chapters U-Boot Setup and Build."
-  echo -e "New u-boot branch is at https://github.com/renesas-rz/rzn1_u-boot.git"
-  banner_yellow "Building u-boot"
-
-
-  
-  
-  # install u-boot
-  if [ ! -e u-boot ] ; then
-
-    #Download u-boot
-    git clone http://git.denx.de/u-boot.git
-    echo "cloning from git.denx.de/u-boot.git..."
-
-    CHECK=`which git`
-    if [ "$CHECK" == "" ] ; then
-      banner_red "git is not installed"
-      echo -e "You need git in order to download the kernel"
-      echo -e "In Ubuntu, you can install it by running:\n\tsudo apt-get install git\n"
-      echo -e "Exiting build script.\n"
-      exit
-    fi
-  else
-    banner_yellow "Directory u-boot exists; skipping clone/download of u-boot."
-  fi
-
-  cd u-boot
-  
-  # Checkout a branch based on the 2017.01 version:
-  git checkout -b rzn1 v2017.01
-  
-  # Set the BSP version to according to the release, for example:
-  BSP_VERSION=v1.4.4
-  
-  # Fetch the RZ/N1 branch and merge it in:
-  git remote add renesas-rz https://github.com/renesas-rz/rzn1_u-boot.git
-  git fetch --tags renesas-rz
-  git merge rzn1-public-$BSP_VERSION
-
-  # Build.
-  # Setup configuration for Renesas RZ/N1D-DB Board
-  make rzn1d400-db_config
-  # Setup configuration for Renesas RZ/N1S-DB Board
-  #make rzn1s324-db_config
-  # Setup configuration for Renesas RZ/N1S IO-Link Board
-  #make rzn1s-io-link_config
-  # Setup configuration for Renesas RZ/N1L-DB Board
-  #make rzn1l-db_config
-  # Build U-Boot
-  if [ "$2" == "" ] ;then
-
-    # default build
-    make
-    if [ ! -e u-boot.bin ] ; then
-      # did not build, so exit
-      banner_red "u-boot Build failed. Exiting build script."
-      exit
-    else
-      banner_green "u-boot Build Successful"
-    fi
-  else
-      # user wants to build something special
-      banner_yellow "Custom Build"
-      echo -e "make $2 $3 $4\n"
-      make $2 $3 $4
-  fi
-
-  cd $ROOTDIR
-
-  echo -e "The Elf executable is stored as 'u-boot' but must be converted to a Renesas SPKG image before download via DFU."
-  echo -e "DONE build u-boot.\n"
-
-  exit  
-  
-  # ==========================================================================
-  # The rest of this u-boot section is the old but more sophisticated method 
-  # for 1.3 DVD and earlier.
-  # ==========================================================================
 
   # install u-boot-2017.01
   if [ ! -e u-boot-2017.01 ] ; then
@@ -611,15 +520,12 @@ if [ "$1" == "buildroot" ]  || [ "$1" == "b" ] ; then
     echo "What version of Buildroot do you want to use?"
     echo "1. buildroot-2016.08"
     echo "2. buildroot-2017.02 (Long Term Support)"
-    echo "3. buildroot-2018.11. Placeholder for test. (Not yet tested by REA.) May need patches?"
     echo -n "(select number)=> "
     read ANSWER
     if [ "$ANSWER" == "1" ] ; then
       echo "export BR_VERSION=2016.08" > br_version.txt
     elif [ "$ANSWER" == "2" ] ; then
       echo "export BR_VERSION=2017.02" > br_version.txt
-    elif [ "$ANSWER" == "3" ] ; then
-      echo "export BR_VERSION=2018.11.1" > br_version.txt
     else
       echo "ERROR: \"$ANSWER\" is an invalid selection!"
       exit
@@ -979,10 +885,10 @@ if [ "$1" == "update" ] ; then
       git clone -b rzn1-stable https://github.com/renesas-rz/rzn1_linux.git
     else
       cd output/rzn1_linux
-      git stash                     # <== userâ€™s changes saved
+      git stash                     # <== user’s changes saved
       git checkout rzn1-stable
       git pull                      # <== REA updates
-      git stash pop                 # <== userâ€™s changes reinserted
+      git stash pop                 # <== user’s changes reinserted
     fi
     exit
   fi

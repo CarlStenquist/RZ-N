@@ -1,0 +1,48 @@
+From a605aa18d5928d6432fe2957c44c02990bd8fe58 Mon Sep 17 00:00:00 2001
+From: Patrick Delaunay <patrick.delaunay@st.com>
+Date: Thu, 8 Dec 2016 18:10:49 +0100
+Subject: [PATCH] usb: gadget: dfu: add functional descriptor in descriptor set
+
+The "DFU descriptor set" must contain the "DFU functional descriptor"
+but it is missing today in U-Boot code
+(cf: DFU spec 1.1, chapter 4.2 DFU Mode Descriptor Set)
+This patch only allocate buffer and copy DFU functional descriptor
+after interfaces.
+
+Signed-off-by: Patrick Delaunay <patrick.delaunay@st.com>
+Signed-off-by: Patrick Delaunay <patrick.delaunay73@gmail.com>
+---
+ drivers/usb/gadget/f_dfu.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/usb/gadget/f_dfu.c b/drivers/usb/gadget/f_dfu.c
+index 0d23830..1821baf 100644
+--- a/drivers/usb/gadget/f_dfu.c
++++ b/drivers/usb/gadget/f_dfu.c
+@@ -654,7 +654,7 @@ static int dfu_prepare_function(struct f_dfu *f_dfu, int n)
+ 	struct usb_interface_descriptor *d;
+ 	int i = 0;
+ 
+-	f_dfu->function = calloc(sizeof(struct usb_descriptor_header *), n + 1);
++	f_dfu->function = calloc(sizeof(struct usb_descriptor_header *), n + 2);
+ 	if (!f_dfu->function)
+ 		goto enomem;
+ 
+@@ -673,6 +673,14 @@ static int dfu_prepare_function(struct f_dfu *f_dfu, int n)
+ 
+ 		f_dfu->function[i] = (struct usb_descriptor_header *)d;
+ 	}
++
++	/* add DFU Functional Descriptor */
++	f_dfu->function[i] = calloc(sizeof(dfu_func), 1);
++	if (!f_dfu->function[i])
++		goto enomem;
++	memcpy(f_dfu->function[i], &dfu_func, sizeof(dfu_func));
++
++	i++;
+ 	f_dfu->function[i] = NULL;
+ 
+ 	return 0;
+-- 
+2.7.4
+

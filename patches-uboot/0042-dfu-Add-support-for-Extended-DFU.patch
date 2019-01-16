@@ -1,0 +1,155 @@
+From 4db468896ade20a869be035fd73dc9267ae3f966 Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Fri, 4 Nov 2016 13:06:02 +0000
+Subject: [PATCH] dfu: Add support for Extended DFU
+
+DFU Extended allows specifying multiple devices to do DFU onto, instead
+of a single one as before.
+
+This requires the use of a new 'dfu_ext_info' env variable that specifies
+the dfu interface and optionally device to use for each target. For example:
+setenv dfu_ext_info '\
+	sf      sf0_spl  raw        0  10000; \
+	sf  1:0 sf1_spl  raw        0  10000; \
+	ram     r_kernel ram 80008000 D80000'
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ cmd/Kconfig       |  8 ++++++++
+ cmd/dfu.c         | 24 +++++++++++++++++++++++-
+ drivers/dfu/dfu.c | 25 +++++++++++++++++++++++--
+ 3 files changed, 54 insertions(+), 3 deletions(-)
+
+diff --git a/cmd/Kconfig b/cmd/Kconfig
+index 91bd3fb..14e0d41 100644
+--- a/cmd/Kconfig
++++ b/cmd/Kconfig
+@@ -437,6 +437,14 @@ config CMD_DFU
+ 	  Enables the command "dfu" which is used to have U-Boot create a DFU
+ 	  class device via USB.
+ 
++config CMD_DFU_EXT
++	bool "dfu extended"
++	depends on CMD_DFU
++	help
++	  Changes the "dfu" command to support multiple dfu targets, e.g. nand
++	  and spi flash. To use this, the "dfu_ext_info" env var is populated
++	  with a list of semi-colon seperated targets.
++
+ config CMD_USB_MASS_STORAGE
+ 	bool "UMS usb mass storage"
+ 	help
+diff --git a/cmd/dfu.c b/cmd/dfu.c
+index 04291f6..f4a7a5a 100644
+--- a/cmd/dfu.c
++++ b/cmd/dfu.c
+@@ -21,7 +21,7 @@
+ 
+ static int do_dfu(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ {
+-
++#ifndef CONFIG_CMD_DFU_EXT
+ 	if (argc < 4)
+ 		return CMD_RET_USAGE;
+ 
+@@ -49,7 +49,24 @@ static int do_dfu(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ 		dfu_show_entities();
+ 		goto done;
+ 	}
++#else
++	/* DFU EXT allows allows us to target multiple interfaces, all info
++	 * about the interfaces is in the 'dfu_ext_info' env var, rather than
++	 * passed in via the dfu command. */
++	char *usb_controller = argv[1];
++	int ret;
++
++	ret = dfu_init_env_entities(NULL, NULL);
++	if (ret)
++		goto done;
++
++	ret = CMD_RET_SUCCESS;
++	if (argc > 1 && !strcmp(argv[1], "list")) {
++		dfu_show_entities();
++		goto done;
++	}
+ 
++#endif /* CONFIG_CMD_DFU_EXT */
+ 	int controller_index = simple_strtoul(usb_controller, NULL, 0);
+ 
+ 	run_usb_dnl_gadget(controller_index, "usb_dnl_dfu");
+@@ -61,6 +78,7 @@ done:
+ 
+ U_BOOT_CMD(dfu, CONFIG_SYS_MAXARGS, 1, do_dfu,
+ 	"Device Firmware Upgrade",
++#ifndef CONFIG_CMD_DFU_EXT
+ 	"<USB_controller> <interface> <dev> [list]\n"
+ 	"  - device firmware upgrade via <USB_controller>\n"
+ 	"    on device <dev>, attached to interface\n"
+@@ -73,4 +91,8 @@ U_BOOT_CMD(dfu, CONFIG_SYS_MAXARGS, 1, do_dfu,
+ 	"    <interface>\n"
+ 	"    [<addr>] - address where FIT image has been stored\n"
+ #endif
++#else
++	" [list]\n"
++	"    [list] - list available DFU settings\n"
++#endif /* CONFIG_CMD_DFU_EXT */
+ );
+diff --git a/drivers/dfu/dfu.c b/drivers/dfu/dfu.c
+index 22a5dea..e14a0ee 100644
+--- a/drivers/dfu/dfu.c
++++ b/drivers/dfu/dfu.c
+@@ -17,6 +17,12 @@
+ #include <linux/list.h>
+ #include <linux/compiler.h>
+ 
++#ifdef CONFIG_CMD_DFU_EXT
++#define DFU_INFO_NAME "dfu_ext_info"
++#else
++#define DFU_INFO_NAME "dfu_alt_info"
++#endif
++
+ static LIST_HEAD(dfu_list);
+ static int dfu_alt_num;
+ static int alt_num_cnt;
+@@ -58,9 +64,9 @@ int dfu_init_env_entities(char *interface, char *devstr)
+ #ifdef CONFIG_SET_DFU_ALT_INFO
+ 	set_dfu_alt_info(interface, devstr);
+ #endif
+-	str_env = getenv("dfu_alt_info");
++	str_env = getenv(DFU_INFO_NAME);
+ 	if (!str_env) {
+-		error("\"dfu_alt_info\" env variable not defined!\n");
++		error("\"" DFU_INFO_NAME "\" env variable not defined!\n");
+ 		return -EINVAL;
+ 	}
+ 
+@@ -472,11 +478,26 @@ int dfu_config_entities(char *env, char *interface, char *devstr)
+ 	for (i = 0; i < dfu_alt_num; i++) {
+ 
+ 		s = strsep(&env, ";");
++#ifdef CONFIG_CMD_DFU_EXT
++		interface = strsep(&s, " ");
++		devstr = NULL;
++		/* has a device been specified? */
++		if (strpbrk(s, ":")) {
++			devstr = s;
++			strsep(&s, " ");
++		}
++		debug("%s interface %s:%s, remains:%s\n", __func__,
++			interface, devstr, s);
++#endif
+ 		ret = dfu_fill_entity(&dfu[i], s, alt_num_cnt, interface,
+ 				      devstr);
+ 		if (ret) {
++#ifdef CONFIG_CMD_DFU_EXT
++			continue; /* it's OK for a probe to fail */
++#else
+ 			free(dfu);
+ 			return -1;
++#endif
+ 		}
+ 
+ 		list_add_tail(&dfu[i].list, &dfu_list);
+-- 
+2.7.4
+

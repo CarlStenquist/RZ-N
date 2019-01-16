@@ -1,0 +1,26 @@
+From 7e46e9c41b015a5542f7211c4c4bd2b81098681a Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 3 Oct 2016 13:59:21 +0100
+Subject: [PATCH] linux compat: Add dev_crit
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ include/linux/compat.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/linux/compat.h b/include/linux/compat.h
+index 533983f..81780a0 100644
+--- a/include/linux/compat.h
++++ b/include/linux/compat.h
+@@ -27,6 +27,8 @@ extern struct p_current *current;
+ 	printf(fmt, ##args)
+ #define dev_warn(dev, fmt, args...)		\
+ 	printf(fmt, ##args)
++#define dev_crit(dev, fmt, args...)		\
++	printf(fmt, ##args)
+ #define printk	printf
+ #define printk_once	printf
+ 
+-- 
+2.7.4
+

@@ -1,0 +1,29 @@
+From 8087bdb89034a2a96f6264c186616137dd4070f3 Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Wed, 20 Apr 2016 09:10:06 +0100
+Subject: [PATCH] spl: Ensure the entry point is within the loaded image
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ common/spl/spl.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/common/spl/spl.c b/common/spl/spl.c
+index ecaa203..5ca5405 100644
+--- a/common/spl/spl.c
++++ b/common/spl/spl.c
+@@ -163,6 +163,11 @@ __weak void __noreturn jump_to_image_no_args(struct spl_image_info *spl_image)
+ {
+ 	typedef void __noreturn (*image_entry_noargs_t)(void);
+ 
++	if (spl_image->entry_point < spl_image->load_addr ||
++		spl_image->entry_point > spl_image->load_addr + spl_image->size) {
++		spl_image->entry_point = spl_image->load_addr;
++		debug("fixing entry point!: 0x%X\n", spl_image->entry_point);
++	}
+ 	image_entry_noargs_t image_entry =
+ 		(image_entry_noargs_t)(unsigned long)spl_image->entry_point;
+ 
+-- 
+2.7.4
+

@@ -1,0 +1,29 @@
+From 98b2370c9f050c65ec42b07e2e3f8bc9105fb38f Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 5 Apr 2017 16:42:16 +0100
+Subject: [PATCH] mmc: Set the initial clock speed to 400KHz
+
+The code currently defaults to the slowest clock speed that can be
+achieved, which can be significantly lower than the SD spec.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/mmc/mmc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/mmc/mmc.c b/drivers/mmc/mmc.c
+index 9f8368a..6637214 100644
+--- a/drivers/mmc/mmc.c
++++ b/drivers/mmc/mmc.c
+@@ -1680,7 +1680,7 @@ int mmc_start_init(struct mmc *mmc)
+ #endif
+ 	mmc->ddr_mode = 0;
+ 	mmc_set_bus_width(mmc, 1);
+-	mmc_set_clock(mmc, 1);
++	mmc_set_clock(mmc, 400000);
+ 
+ 	/* Reset the Card */
+ 	err = mmc_go_idle(mmc);
+-- 
+2.7.4
+

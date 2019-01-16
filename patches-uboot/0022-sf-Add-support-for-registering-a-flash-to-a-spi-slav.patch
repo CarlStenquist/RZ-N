@@ -1,0 +1,76 @@
+From 193c82666bd296982c95ebbcdb61300b916f7d1d Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Thu, 18 Sep 2014 11:23:39 +0100
+Subject: [PATCH] sf: Add support for registering a flash to a spi slave
+
+Some QSPI hardware needs to know about the flash that has been detected
+by the upper layer to configure itself properly (number of address
+bytes, dummy cycles etc).
+Added an optional function that will allow this to be possible.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ drivers/mtd/spi/spi_flash.c  | 10 ++++++++++
+ include/spi.h                | 12 ++++++++++++
+ scripts/config_whitelist.txt |  1 +
+ 3 files changed, 23 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi_flash.c b/drivers/mtd/spi/spi_flash.c
+index 2e378dc..32a46b3 100644
+--- a/drivers/mtd/spi/spi_flash.c
++++ b/drivers/mtd/spi/spi_flash.c
+@@ -1088,6 +1088,16 @@ int spi_flash_scan(struct spi_flash *flash)
+ 	}
+ #endif
+ 
++#ifdef CONFIG_SPI_REGISTER_FLASH
++	/*
++	 * 'clever' SPI controllers that are dedicated to flashes and QSPI
++	 * flashes needs to know all sort of parameters, like the quad mode,
++	 * number of dummy bytes and so on. Therefore we 'register' the flash
++	 * with the slave to give it a chance to keep it around
++	 */
++	spi_slave_register_flash(flash);
++#endif
++
+ #ifndef CONFIG_SPL_BUILD
+ 	printf("SF: Detected %s with page size ", flash->name);
+ 	print_size(flash->page_size, ", erase size ");
+diff --git a/include/spi.h b/include/spi.h
+index deb65ef..3a3324e 100644
+--- a/include/spi.h
++++ b/include/spi.h
+@@ -315,6 +315,18 @@ static inline int spi_w8r8(struct spi_slave *slave, unsigned char byte)
+ 	return ret < 0 ? ret : din[1];
+ }
+ 
++#ifdef CONFIG_SPI_REGISTER_FLASH
++/**
++ * Inform the SPI slave that a flash has been allocated
++ * This is used to allow the spi slave to possibly configure
++ * the underlying hardware using the number of address bytes,
++ * number of blocks etc.
++ * @flash:	The flash we are registering
++ */
++struct spi_flash;
++void spi_slave_register_flash(struct spi_flash *flash);
++#endif
++
+ /**
+  * Set up a SPI slave for a particular device tree node
+  *
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index 0bfd1c4..8dd5a4a 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -4060,6 +4060,7 @@ CONFIG_SPI_HALF_DUPLEX
+ CONFIG_SPI_IDLE_VAL
+ CONFIG_SPI_LENGTH
+ CONFIG_SPI_N25Q256A_RESET
++CONFIG_SPI_REGISTER_FLASH
+ CONFIG_SPLASHIMAGE_GUARD
+ CONFIG_SPLASH_SCREEN
+ CONFIG_SPLASH_SCREEN_ALIGN
+-- 
+2.7.4
+

@@ -1,0 +1,30 @@
+From cbd7f584cfd9ed7289e2ded805035329bc31b028 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Wed, 21 Dec 2016 14:45:18 +0000
+Subject: [PATCH] mmc: sdhci: Fix support for broken voltage quirk
+
+If the SD host controller has broken voltage support, we are passed
+in the mask for the voltages that it does support. Therefore, we
+have to AND the list of supported voltage with this.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/mmc/sdhci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/mmc/sdhci.c b/drivers/mmc/sdhci.c
+index cbf5f56..2465a21 100644
+--- a/drivers/mmc/sdhci.c
++++ b/drivers/mmc/sdhci.c
+@@ -590,7 +590,7 @@ int sdhci_setup_cfg(struct mmc_config *cfg, struct sdhci_host *host,
+ 		cfg->voltages |= MMC_VDD_165_195;
+ 
+ 	if (host->quirks & SDHCI_QUIRK_BROKEN_VOLTAGE)
+-		cfg->voltages |= host->voltages;
++		cfg->voltages &= host->voltages;
+ 
+ 	cfg->host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_4BIT;
+ 	if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300) {
+-- 
+2.7.4
+

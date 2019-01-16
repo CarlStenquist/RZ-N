@@ -1,0 +1,40 @@
+From 1c01a4c858b4addb3873e5229c0db65a319c44ae Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Mon, 7 Nov 2016 12:16:21 +0000
+Subject: [PATCH] cmd: nand: info now shows manufacturer & device name, and ECC
+ details.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ cmd/nand.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/cmd/nand.c b/cmd/nand.c
+index c16ec77..97cf312 100644
+--- a/cmd/nand.c
++++ b/cmd/nand.c
+@@ -286,7 +286,7 @@ static void nand_print_and_set_info(int idx)
+ 	struct mtd_info *mtd = nand_info[idx];
+ 	struct nand_chip *chip = mtd_to_nand(mtd);
+ 
+-	printf("Device %d: ", idx);
++	printf("Device %d (%s %s): ", idx, chip->onfi_params.manufacturer, chip->onfi_params.model);
+ 	if (chip->numchips > 1)
+ 		printf("%dx ", chip->numchips);
+ 	printf("%s, sector size %u KiB\n",
+@@ -298,6 +298,12 @@ static void nand_print_and_set_info(int idx)
+ 	printf("  options     0x%8x\n", chip->options);
+ 	printf("  bbt options 0x%8x\n", chip->bbt_options);
+ 
++	printf("  ECC BCH%d, block size        %d b\n", chip->ecc.strength, chip->ecc.size);
++	printf("  ECC bytes per block          %d b\n", chip->ecc.bytes);
++#if defined(RZN1_NAND_OOB_FS_BYTES)
++	printf("  ECC reserved for file system %d b\n", RZN1_NAND_OOB_FS_BYTES);
++#endif
++
+ 	/* Set geometry info */
+ 	setenv_hex("nand_writesize", mtd->writesize);
+ 	setenv_hex("nand_oobsize", mtd->oobsize);
+-- 
+2.7.4
+

@@ -1,0 +1,61 @@
+From 9d8fb7c3508fe2aaedead98ec08b296ef793e966 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Thu, 17 Nov 2016 08:14:43 +0000
+Subject: [PATCH] sf: Allow boards to specify the read quad cmd
+
+When using quad capable device, The SPI Flash layer currently uses the
+Quad Output Fast command. Most (all?) SF devices default to 8 dummy
+cycles for this command, so you can easily use second sources for your
+SF device.
+
+However, reading using QuadIO can be considerably faster than QuadOutput.
+We have measured over 20% increased throughput on the Renesas RZ/N1 Demo
+board. This change allows boards to specify the read quad command to use.
+This should be accompanied with configuration that specifies the number
+of dummy cycles.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ drivers/mtd/spi/spi_flash.c  | 6 +++++-
+ scripts/config_whitelist.txt | 1 +
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/mtd/spi/spi_flash.c b/drivers/mtd/spi/spi_flash.c
+index 4efad15..25d0a93 100644
+--- a/drivers/mtd/spi/spi_flash.c
++++ b/drivers/mtd/spi/spi_flash.c
+@@ -22,6 +22,10 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
++#if !defined(CONFIG_SPI_FLASH_READ_QUAD_CMD)
++#define CONFIG_SPI_FLASH_READ_QUAD_CMD CMD_READ_QUAD_OUTPUT_FAST
++#endif
++
+ static void spi_flash_addr(struct spi_flash *flash, u32 addr, u8 *cmd)
+ {
+ 	/* cmd[0] is actual command */
+@@ -1098,7 +1102,7 @@ int spi_flash_scan(struct spi_flash *flash)
+ 	if (spi->mode & SPI_RX_SLOW)
+ 		flash->read_cmd = CMD_READ_ARRAY_SLOW;
+ 	else if (spi->mode & SPI_RX_QUAD && info->flags & RD_QUAD)
+-		flash->read_cmd = CMD_READ_QUAD_OUTPUT_FAST;
++		flash->read_cmd = CONFIG_SPI_FLASH_READ_QUAD_CMD;
+ 	else if (spi->mode & SPI_RX_DUAL && info->flags & RD_DUAL)
+ 		flash->read_cmd = CMD_READ_DUAL_OUTPUT_FAST;
+ 
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index 8dd5a4a..65311b4 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -4055,6 +4055,7 @@ CONFIG_SPI_DATAFLASH_WRITE_VERIFY
+ CONFIG_SPI_FLASH_ALL
+ CONFIG_SPI_FLASH_ISSI
+ CONFIG_SPI_FLASH_QUAD
++CONFIG_SPI_FLASH_READ_QUAD_CMD
+ CONFIG_SPI_FLASH_SIZE
+ CONFIG_SPI_HALF_DUPLEX
+ CONFIG_SPI_IDLE_VAL
+-- 
+2.7.4
+

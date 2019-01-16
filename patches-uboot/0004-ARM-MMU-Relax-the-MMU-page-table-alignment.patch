@@ -1,0 +1,31 @@
+From 589bb9828fa7c19a47b9682ba0a54cae59900d33 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 20 Feb 2015 10:00:14 +0000
+Subject: [PATCH] ARM: MMU: Relax the MMU page table alignment
+
+Instead of enforcing an alignment of 64KB, we just need to ensure
+the page table is aligned to it's size, so saving memory.
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ common/board_f.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/common/board_f.c b/common/board_f.c
+index 175c6ba..4e38de7 100644
+--- a/common/board_f.c
++++ b/common/board_f.c
+@@ -439,8 +439,8 @@ static int reserve_mmu(void)
+ 	gd->arch.tlb_size = PGTABLE_SIZE;
+ 	gd->relocaddr -= gd->arch.tlb_size;
+ 
+-	/* round down to next 64 kB limit */
+-	gd->relocaddr &= ~(0x10000 - 1);
++	/* round down to ensure alignment */
++	gd->relocaddr &= ~(PGTABLE_SIZE - 1);
+ 
+ 	gd->arch.tlb_addr = gd->relocaddr;
+ 	debug("TLB table from %08lx to %08lx\n", gd->arch.tlb_addr,
+-- 
+2.7.4
+

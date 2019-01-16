@@ -1,0 +1,47 @@
+From 678ffc2c20c6e4bbdcf1a88fad6b683592d12fb9 Mon Sep 17 00:00:00 2001
+From: Michel Pollet <michel.pollet@bp.renesas.com>
+Date: Mon, 12 Dec 2016 15:08:29 +0000
+Subject: [PATCH] spl: spi: Disable kernel loading if the kernel offset is not
+ defined
+
+If the kernel offset is not defined, it's still fine as the multi_image
+module might be doing it's things.
+
+Signed-off-by: Michel Pollet <michel.pollet@bp.renesas.com>
+---
+ common/spl/spl_spi.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/common/spl/spl_spi.c b/common/spl/spl_spi.c
+index 29faa10..b06ba86 100644
+--- a/common/spl/spl_spi.c
++++ b/common/spl/spl_spi.c
+@@ -15,7 +15,7 @@
+ #include <errno.h>
+ #include <spl.h>
+ 
+-#ifdef CONFIG_SPL_OS_BOOT
++#if defined(CONFIG_SPL_OS_BOOT) && defined(CONFIG_SYS_SPI_KERNEL_OFFS)
+ /*
+  * Load the kernel, check for a valid header we can parse, and if found load
+  * the kernel and then device tree.
+@@ -128,14 +128,14 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
+ {
+ 	int err = 0;
+ 	struct spi_flash *flash;
+-#ifdef CONFIG_SPL_OS_BOOT
++#if defined(CONFIG_SPL_OS_BOOT) && defined(CONFIG_SYS_SPI_KERNEL_OFFS)
+ 	struct image_header header_stack;
+ 	struct image_header *header = &header_stack;
+ #endif
+ 
+ 	flash = spl_spi_probe();
+ 
+-#ifdef CONFIG_SPL_OS_BOOT
++#if defined(CONFIG_SPL_OS_BOOT) && defined(CONFIG_SYS_SPI_KERNEL_OFFS)
+ 	if (spl_start_uboot() || spi_load_image_os(spl_image, flash, &header))
+ #endif
+ 	{
+-- 
+2.7.4
+

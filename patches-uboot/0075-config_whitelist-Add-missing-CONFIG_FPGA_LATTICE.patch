@@ -1,0 +1,25 @@
+From 99776911bc1189f31ec85ad95d361eeb2caef362 Mon Sep 17 00:00:00 2001
+From: Phil Edworthy <phil.edworthy@renesas.com>
+Date: Fri, 28 Apr 2017 09:12:13 +0100
+Subject: [PATCH] config_whitelist: Add missing CONFIG_FPGA_LATTICE
+
+Signed-off-by: Phil Edworthy <phil.edworthy@renesas.com>
+---
+ scripts/config_whitelist.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/scripts/config_whitelist.txt b/scripts/config_whitelist.txt
+index 8779c1a..69dbb28 100644
+--- a/scripts/config_whitelist.txt
++++ b/scripts/config_whitelist.txt
+@@ -1216,6 +1216,7 @@ CONFIG_FORCE_DDR_DATA_BUS_WIDTH_32
+ CONFIG_FORMIKE
+ CONFIG_FPGA_COUNT
+ CONFIG_FPGA_DELAY
++CONFIG_FPGA_LATTICE
+ CONFIG_FPGA_SOCFPGA
+ CONFIG_FPGA_SPARTAN2
+ CONFIG_FPGA_SPARTAN3
+-- 
+2.7.4
+
